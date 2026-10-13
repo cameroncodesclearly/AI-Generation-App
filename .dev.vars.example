@@ -1,0 +1,8 @@
+# Copy to .dev.vars for local dev. In production set these with `wrangler secret put <NAME>`.
+OPENROUTER_API_KEY=sk-or-v1-...
+RESEND_API_KEY=re_...
+# Optional: your NAS analyzer container (yt-dlp + whisper + frame extraction). See nas-analyzer/README.md
+NAS_ANALYZER_URL=
+NAS_ANALYZER_TOKEN=
+# Optional: when set, local dev skips email and prints the magic link to the wrangler console
+DEV_PRINT_MAGIC_LINK=1
