@@ -40,7 +40,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="rays mb-10 text-center">
           <div className="eyebrow mb-3">Clear Sky Creations</div>
-          <h1 className="display text-6xl leading-[0.9] sm:text-7xl">Creative<br />Creators</h1>
+          <h1 className="display display-sun text-6xl leading-[0.9] sm:text-7xl">Creative<br />Creators</h1>
           <p className="muted mt-4 text-sm">Image, video and copy generation for the team. One studio, every model.</p>
         </div>
         <form onSubmit={submit} className="glass glass-strong p-6">

@@ -79,7 +79,7 @@ export default function PresetEditor() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <Link to="/presets" className="muted mb-2 inline-flex items-center gap-1 text-xs hover:text-white"><ArrowLeft size={12} /> Presets</Link>
-          <h1 className="display text-4xl">{id ? "Edit preset" : "New preset"}</h1>
+          <h1 className="display text-2xl">{id ? "Edit preset" : "New preset"}</h1>
         </div>
         <button className="btn btn-sun" onClick={save} disabled={busy || !name.trim() || !template.trim() || !model}>{busy ? <Spinner /> : "Save preset"}</button>
       </div>

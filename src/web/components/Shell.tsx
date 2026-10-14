@@ -30,7 +30,7 @@ export default function Shell() {
     <div className="min-h-screen">
       <div className="sky" />
       <header className="topnav">
-        <NavLink to="/" className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-navy to-sky" title="Creative Creators"><Clapperboard size={16} className="text-ink" /></NavLink>
+        <NavLink to="/" className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sun text-ink" title="Creative Creators"><Clapperboard size={16} className="text-ink" /></NavLink>
         <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-thin">
           {links.map((l) => <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `topnav-link flex items-center gap-1.5 ${isActive ? "active" : ""}`}>{l.label}{l.badge && <span className="badge badge-new">{l.badge}</span>}</NavLink>)}
         </nav>

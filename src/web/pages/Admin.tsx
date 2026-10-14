@@ -14,7 +14,7 @@ export default function Admin() {
   if (me?.user.role !== "admin") return null;
   return (
     <div className="space-y-5">
-      <div><div className="eyebrow">Admin</div><h1 className="display text-4xl">Studio controls</h1></div>
+      <div><div className="eyebrow">Admin</div><h1 className="display text-2xl">Studio controls</h1></div>
       <div className="flex gap-2">{(["team", "models", "usage"] as const).map((t) => <button key={t} className={`chip ${tab === t ? "chip-on" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
       {tab === "team" && <Team />}
       {tab === "models" && <Models />}
@@ -165,10 +165,10 @@ function Usage() {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <div className="glass p-4"><div className="muted text-xs">Real spend this month</div><div className="display text-3xl">${Number(t?.month_usd ?? 0).toFixed(2)}</div></div>
-        <div className="glass p-4"><div className="muted text-xs">Generations</div><div className="display text-3xl">{t?.month_generations ?? 0}</div></div>
-        <div className="glass p-4"><div className="muted text-xs">Analyses</div><div className="display text-3xl">{t?.month_analyses ?? 0}</div></div>
-        <div className="glass p-4"><div className="muted text-xs">In flight</div><div className="display text-3xl">{t?.in_flight ?? 0}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">Real spend this month</div><div className="display text-2xl">${Number(t?.month_usd ?? 0).toFixed(2)}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">Generations</div><div className="display text-2xl">{t?.month_generations ?? 0}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">Analyses</div><div className="display text-2xl">{t?.month_analyses ?? 0}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">In flight</div><div className="display text-2xl">{t?.in_flight ?? 0}</div></div>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="glass glass-strong p-4"><div className="eyebrow mb-2">By person (this period)</div>

@@ -26,7 +26,7 @@ export default function Account() {
   return (
     <div className="max-w-3xl space-y-5">
       {toast}
-      <div><div className="eyebrow">Account</div><h1 className="display text-4xl">{u.name || u.email.split("@")[0]}</h1></div>
+      <div><div className="eyebrow">Account</div><h1 className="display text-2xl">{u.name || u.email.split("@")[0]}</h1></div>
       {needsPassword && <div className="glass border-sun/40 p-4 text-sm"><b className="text-sun">{u.must_set_password ? "Replace your temporary password." : "Set a password."}</b> You can then sign in with email and password instead of waiting for a link.</div>}
       <form onSubmit={savePassword} className="glass glass-strong space-y-3 p-5">
         <div className="eyebrow">Password</div>
@@ -38,9 +38,9 @@ export default function Account() {
         <div className="flex justify-end"><button className="btn btn-sun" disabled={pwBusy || pw.length < 10}>{u.has_password ? "Change password" : "Set password"}</button></div>
       </form>
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="glass p-4"><div className="muted text-xs">Credits left</div><div className="display text-3xl">{fmtCredits(me.remaining)}</div><div className="muted text-[11px]">≈ ${(me.remaining * me.config.credit_usd).toFixed(2)} of spend</div></div>
-        <div className="glass p-4"><div className="muted text-xs">Used this period</div><div className="display text-3xl">{fmtCredits(u.credits_used)}</div><div className="muted text-[11px]">of {fmtCredits(u.credit_limit)} · resets {u.period_reset === "monthly" ? "monthly" : "never"}</div></div>
-        <div className="glass p-4"><div className="muted text-xs">1 credit =</div><div className="display text-3xl">${me.config.credit_usd.toFixed(2)}</div><div className="muted text-[11px]">{u.role} · since {u.created_at.slice(0, 10)}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">Credits left</div><div className="display text-2xl">{fmtCredits(me.remaining)}</div><div className="muted text-[11px]">≈ ${(me.remaining * me.config.credit_usd).toFixed(2)} of spend</div></div>
+        <div className="glass p-4"><div className="muted text-xs">Used this period</div><div className="display text-2xl">{fmtCredits(u.credits_used)}</div><div className="muted text-[11px]">of {fmtCredits(u.credit_limit)} · resets {u.period_reset === "monthly" ? "monthly" : "never"}</div></div>
+        <div className="glass p-4"><div className="muted text-xs">1 credit =</div><div className="display text-2xl">${me.config.credit_usd.toFixed(2)}</div><div className="muted text-[11px]">{u.role} · since {u.created_at.slice(0, 10)}</div></div>
       </div>
       <div className="glass glass-strong p-5">
         <Field label="Display name"><div className="flex gap-2"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /><button className="btn" onClick={async () => { await api.patch("/api/auth/me", { name }); await refresh(); say("Saved"); }}>Save</button></div></Field>

@@ -38,7 +38,7 @@ const models: ModelInfo[] = [
 ];
 
 // ---- Canvas "renders" -----------------------------------------------------
-const PALETTES: [string, string, string][] = [["#1a5276", "#85c1e9", "#f7dc6f"], ["#0d1b2b", "#1a5276", "#d9b435"], ["#f7dc6f", "#d9b435", "#1a5276"], ["#85c1e9", "#f1f2f4", "#1a5276"], ["#2c3e50", "#85c1e9", "#f7dc6f"], ["#1a1307", "#d9b435", "#f7dc6f"]];
+const PALETTES: [string, string, string][] = [["#0f1b2a", "#1a5276", "#85c1e9"], ["#1a1307", "#3a2f14", "#d9b435"], ["#101418", "#2b3a4a", "#85c1e9"], ["#1a5276", "#0d1b2b", "#f7dc6f"], ["#23272b", "#0c0e11", "#85c1e9"], ["#2c1f1a", "#5a3a2a", "#f7dc6f"], ["#0b2a3a", "#1a5276", "#f1f2f4"], ["#121416", "#33261a", "#d9b435"]];
 function ratio(ar: string | undefined): [number, number] {
   const m = /^(\d+):(\d+)$/.exec(ar ?? ""); if (!m) return [1, 1]; return [Number(m[1]), Number(m[2])];
 }

@@ -35,7 +35,7 @@ export default function Home() {
         {heroes.map((h, i) => (
           <Link key={i} to={h.to} className={`hero-card glass-hover ${h.cover ? "" : "cover-fallback"}`}>
             {h.cover && <img src={fileUrl(h.cover)} className="absolute inset-0 h-full w-full object-cover" alt="" />}
-            <div className="display text-2xl leading-none">{h.title}</div>
+            <div className="display text-xl leading-none">{h.title}</div>
             <div className="mt-1 line-clamp-2 text-xs text-white/75">{h.desc}</div>
           </Link>
         ))}
@@ -44,7 +44,7 @@ export default function Home() {
       <section className="rays relative">
         <div className="mb-3 text-center">
           <div className="eyebrow">{me?.user.name || me?.user.email.split("@")[0]} · {fmtCredits(me?.remaining)} credits left</div>
-          <h1 className="display text-5xl sm:text-6xl">Creative Creators</h1>
+          <h1 className="display display-sun text-5xl sm:text-6xl">Creative Creators</h1>
         </div>
         <form onSubmit={go} className="promptbar mx-auto max-w-3xl">
           <div className="flex min-w-0 flex-col gap-2">
@@ -71,7 +71,7 @@ export default function Home() {
 
       <section>
         <div className="mb-3 flex items-end justify-between">
-          <div><h2 className="display text-2xl">Team presets</h2><div className="muted text-xs">One-click looks the team has built</div></div>
+          <div><h2 className="display text-xl">Team presets</h2><div className="muted text-xs">One-click looks the team has built</div></div>
           <Link to="/presets" className="btn btn-sm btn-ghost">See all <ArrowRight size={14} /></Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -90,7 +90,7 @@ export default function Home() {
 
       <section>
         <div className="mb-3 flex items-end justify-between">
-          <div><h2 className="display text-2xl">Studio feed</h2><div className="muted text-xs">What the team is making</div></div>
+          <div><h2 className="display text-xl">Studio feed</h2><div className="muted text-xs">What the team is making</div></div>
           <Link to="/library" className="btn btn-sm btn-ghost">My generations <ArrowRight size={14} /></Link>
         </div>
         <div className="masonry">

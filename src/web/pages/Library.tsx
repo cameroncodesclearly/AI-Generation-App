@@ -66,7 +66,7 @@ export default function Library() {
             </div>
           </div>
         ))}
-        {!feed.loading && !items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-3xl">Nothing here yet</div><p className="muted mt-2 text-sm">Finished generations are kept here with their prompts.</p></div></div>}
+        {!feed.loading && !items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-2xl">Nothing here yet</div><p className="muted mt-2 text-sm">Finished generations are kept here with their prompts.</p></div></div>}
       </section>
       {current && <Lightbox g={current} onClose={() => setSel(null)}
         onRerun={async () => { try { await api.post(`/api/generations/${current.id}/rerun`); say("Queued a rerun"); void refresh(); } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } }}

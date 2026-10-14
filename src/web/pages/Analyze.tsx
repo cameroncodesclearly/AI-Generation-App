@@ -68,7 +68,7 @@ export default function Analyze() {
   return (
     <div className="space-y-5">
       {toast}
-      <div><div className="eyebrow">Research</div><h1 className="display text-4xl">Analyze video</h1>
+      <div><div className="eyebrow">Research</div><h1 className="display text-2xl">Analyze video</h1>
         <p className="muted mt-1 max-w-2xl text-sm">Drop in a social video and a note. Get a transcript, a summary, a scene-by-scene visual description, the hook, and caption ideas you can copy in one tap. Or upload a CSV and get a CSV back.</p>
         {!me?.config.nas_bridge && <p className="mt-2 text-xs text-sun/90">TikTok and Instagram links need the NAS analyzer bridge (not connected). Upload the file or use a direct .mp4 or YouTube link.</p>}
       </div>

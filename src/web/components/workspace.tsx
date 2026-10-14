@@ -105,7 +105,7 @@ export function StyleCard({ preset, onChange, onClear }: { preset: Preset | null
       {preset?.cover_key && <img src={fileUrl(preset.cover_key)} className="absolute inset-0 h-full w-full object-cover" alt="" />}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
       <div className="relative flex h-full min-h-[112px] flex-col justify-end p-3">
-        <div className="display text-lg leading-none">{preset ? preset.name : "Freeform"}</div>
+        <div className="display text-base leading-none">{preset ? preset.name : "Freeform"}</div>
         <div className="text-[11px] text-white/70">{preset ? `${preset.kind} preset · ${preset.model.split("/").pop()}` : "No preset. Pick one to lock a look."}</div>
       </div>
       <div className="absolute right-2 top-2 flex gap-1">

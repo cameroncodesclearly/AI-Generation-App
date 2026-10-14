@@ -27,7 +27,7 @@ export default function Presets() {
     <div className="space-y-6">
       {toast}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="display text-5xl">Presets</h1><p className="muted text-sm">The team's looks. Pick one, fill the inputs, generate.</p></div>
+        <div><h1 className="display text-2xl">Presets</h1><p className="muted text-sm">The team's looks. Pick one, fill the inputs, generate.</p></div>
         <Link to="/presets/new" className="btn btn-sun"><Plus size={16} /> New preset</Link>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -69,7 +69,7 @@ export default function Presets() {
 
       {fromPresets.length > 0 && (
         <section>
-          <h2 className="display mb-3 text-2xl">Made with presets</h2>
+          <h2 className="display mb-3 text-xl">Made with presets</h2>
           <div className="masonry">
             {fromPresets.map((g) => {
               const out = parseJson<{ key: string; mime: string }[]>(g.outputs_json, [])[0];

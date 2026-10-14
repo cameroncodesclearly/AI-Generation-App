@@ -74,7 +74,7 @@ function ImageStudio() {
             </div>
           );
         })}
-        {!s.feed.loading && !done.length && <div className="col-span-full grid min-h-[55vh] place-items-center text-center"><div><div className="display text-3xl">Describe the scene you imagine</div><p className="muted mt-2 text-sm">Your images will fill this wall.</p></div></div>}
+        {!s.feed.loading && !done.length && <div className="col-span-full grid min-h-[55vh] place-items-center text-center"><div><div className="display text-2xl">Describe the scene you imagine</div><p className="muted mt-2 text-sm">Your images will fill this wall.</p></div></div>}
       </div>
 
       <div className="bar">
@@ -172,7 +172,7 @@ function PanelStudio({ kind }: { kind: Kind }) {
           </div>
         </div>
         {tab === "how" ? (
-          <div className="mx-auto max-w-2xl py-10 text-center"><div className="display text-4xl">{how.title}</div><ul className="mt-6 space-y-3 text-left text-sm">{how.tips.map((t) => <li key={t} className="panel p-3">{t}</li>)}</ul></div>
+          <div className="mx-auto max-w-2xl py-10 text-center"><div className="display text-2xl">{how.title}</div><ul className="mt-6 space-y-3 text-left text-sm">{how.tips.map((t) => <li key={t} className="panel p-3">{t}</li>)}</ul></div>
         ) : view === "grid" ? (
           <div className="masonry">{s.items.map((g) => <div key={g.id} onClick={() => s.setSelected(g.id)}><FeedItem g={g} active={false} onSelect={() => s.setSelected(g.id)} /></div>)}</div>
         ) : (
@@ -185,7 +185,7 @@ function PanelStudio({ kind }: { kind: Kind }) {
             ))}
           </div>
         )}
-        {tab === "history" && !s.feed.loading && !s.items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-3xl">Nothing here yet</div><p className="muted mt-2 text-sm">Fill in the panel on the left and hit Generate.</p></div></div>}
+        {tab === "history" && !s.feed.loading && !s.items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-2xl">Nothing here yet</div><p className="muted mt-2 text-sm">Fill in the panel on the left and hit Generate.</p></div></div>}
       </section>
 
       <PresetPickerModal open={pickPreset} kind={kind} onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); s.applyPreset(p); }} />
