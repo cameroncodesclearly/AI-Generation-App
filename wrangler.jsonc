@@ -15,11 +15,14 @@
     "APP_URL": "http://localhost:5173",
     "MAIL_FROM": "Creative Creators <studio@example.com>",
     "ADMIN_EMAILS": "cameron@clearskycreations.com",
-    "CREDIT_USD": "0.01",
-    "CREDIT_MARKUP": "1.15",
-    "DEFAULT_CREDIT_LIMIT": "2000",
+    "CREDIT_USD": "0.001",
+    "CREDIT_MARKUP": "1",
+    "DEFAULT_CREDIT_LIMIT": "25000",
     "SESSION_DAYS": "30",
-    "GOOGLE_ALLOWED_DOMAINS": "clearskycreations.com"
+    "GOOGLE_ALLOWED_DOMAINS": "clearskycreations.com",
+    "CONFIRM_OVER_USD": "0.50",
+    "NOTION_RESEARCH_SOURCE": "318a696c-1a53-8060-a02f-000bd0339281",
+    "NOTION_RESEARCH_DB": "318a696c1a5380ab9a2bc514630ee9a7"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "studio-db", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "migrations" }

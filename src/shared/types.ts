@@ -47,12 +47,26 @@ export interface ModelInfo {
   source: "curated" | "openrouter" | "override";
 }
 
+export interface ResearchRef { id: string; hook: string | null; url: string | null; type: string | null; platform: string | null; views: number | null }
+
 export interface Estimate {
   credits: number;
   usd: number;
   breakdown: string[];
   warning?: string;
+  research?: ResearchRef[];
 }
+
+export interface ResearchItem {
+  page_id: string; url: string | null; hook: string | null; type: string | null; platform: string | null;
+  views: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null;
+  engagement: number | null; grade: number | null; success_score: number | null; use_case: string | null; notes: string | null;
+  submitted_by: string | null; posted: string | null; link: string | null; ai_status: string | null; summary: string | null; body?: string | null;
+}
+
+export interface ResearchConfig { mode?: "off" | "auto" | "pick"; focus?: string; types?: string[]; platforms?: string[]; count?: number; ids?: string[] }
+
+export interface SpendRow { id: string; type: "generation" | "analysis"; kind: string; label: string; model: string; status: string; charged: number; estimate: number; final: boolean; created_at: string }
 
 export interface GenerateRequest {
   kind: Kind;

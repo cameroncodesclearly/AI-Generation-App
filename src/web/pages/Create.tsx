@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { AtSign, BookOpen, Clock, History as HistoryIcon, LayoutGrid, List, Monitor, Plus, Proportions, Sparkles, Volume2, X } from "lucide-react";
 import type { Kind } from "../../shared/types";
-import { fileUrl, fmtCredits } from "../lib/api";
+import { fileUrl } from "../lib/api";
+import { money, usd } from "../lib/money";
+import { CostConfirm, LowBudget } from "../components/Cost";
+import { ResearchPanel } from "../components/research";
+import type { ResearchConfig } from "../../shared/types";
 import { useStudio } from "../components/useStudio";
 import { AssetsPicker, ChipMenu, FeedItem, FrameTile, Lightbox, MetaCard, ModelBadge, ModelRow, Stepper, StyleCard, VarChips, priceLabel, type Gen } from "../components/workspace";
 import { Modal, Spinner, StatusPill, useToast } from "../components/ui";
@@ -58,6 +62,7 @@ function ImageStudio() {
   return (
     <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4">
       {toast}
+      <div className="px-3 pt-3 md:px-4"><LowBudget remainingCredits={s.me?.remaining ?? 0} limitCredits={s.me?.user.credit_limit ?? 0} /></div>
       <div className="flex items-center justify-between px-4 py-2">
         <div className="seg"><button className={s.scope === "mine" ? "on" : ""} onClick={() => s.setScope("mine")}>My generations</button><button className={s.scope === "team" ? "on" : ""} onClick={() => s.setScope("team")}>Team</button></div>
         <div className="flex items-center gap-3 text-xs muted"><span>Tile size</span><input type="range" min={140} max={420} value={tile} onChange={(e) => setTile(Number(e.target.value))} className="accent-sun" /></div>
@@ -98,12 +103,13 @@ function ImageStudio() {
           <input className="input !w-44 !py-1.5 text-xs" value={s.negative} onChange={(e) => s.setNegative(e.target.value)} placeholder="Avoid…" />
           <span className="ml-auto flex items-center gap-2">
             <button type="button" className="cchip" onClick={() => setSavePreset(true)} disabled={!s.renderedPrompt.trim()}>Save preset</button>
-            <button type="button" className="btn-generate !w-auto px-5" onClick={s.run} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over}>{s.busy ? <Spinner /> : <Sparkles size={15} />} Generate <span className="text-xs opacity-80">✦ {s.est ? fmtCredits(s.est.credits) : "…"}</span></button>
+            <button type="button" className="btn-generate !w-auto px-5" onClick={() => void s.run()} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over} title={s.est?.breakdown.join(" · ")}>{s.busy ? <Spinner /> : <Sparkles size={15} />} Generate <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-xs">{s.est ? usd(s.est.usd) : "…"}</span></button>
           </span>
         </div>
-        {s.over && <div className="mt-1 text-[11px] text-red-300">Over your remaining {fmtCredits(s.me?.remaining)} credits.</div>}
+        <div className="mt-1 flex justify-between text-[11px] muted"><span>{s.over ? <span className="text-red-300">This costs more than the {money(s.me?.remaining)} you have left.</span> : s.est ? `${s.est.breakdown.join(" · ")}` : ""}</span><span>{money(s.me?.remaining)} left this month</span></div>
       </div>
 
+      <CostConfirm open={s.confirming} est={s.est} remainingCredits={s.me?.remaining ?? 0} what={`${s.count} image${s.count > 1 ? "s" : ""} with ${s.m?.name ?? s.model}`} onConfirm={() => void s.run(true)} onCancel={() => s.setConfirming(false)} />
       <AssetsPicker open={pick} onClose={() => setPick(false)} max={4} selected={s.refs} onPick={(k) => s.setRefs(s.refs.includes(k) ? s.refs.filter((x) => x !== k) : [...s.refs, k].slice(0, 4))} />
       <PresetPickerModal open={pickPreset} kind="image" onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); s.applyPreset(p); }} />
       <SavePresetModal open={savePreset} onClose={() => setSavePreset(false)} seed={{ kind: "image", model: s.model, template: s.renderedPrompt, negative: s.negative, params: s.params, reference_keys: s.refs }} onSaved={() => { setSavePreset(false); say("Preset saved"); }} />
@@ -133,6 +139,7 @@ function PanelStudio({ kind }: { kind: Kind }) {
   return (
     <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
       {toast}
+      <div className="lg:col-span-2 empty:hidden"><LowBudget remainingCredits={s.me?.remaining ?? 0} limitCredits={s.me?.user.credit_limit ?? 0} /></div>
       <aside className="panel flex flex-col gap-3 p-3 lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-auto scrollbar-thin">
         <div className="flex gap-4 border-b border-white/10 px-1 text-sm font-semibold"><span className="border-b-2 border-white pb-2">Create {kind === "video" ? "Video" : "Copy"}</span>{kind === "video" && <><span className="pb-2 muted">Edit Video</span><span className="pb-2 muted">Motion Control</span></>}</div>
         <StyleCard preset={s.preset} onChange={() => setPickPreset(true)} onClear={s.clearPreset} />
@@ -149,6 +156,7 @@ function PanelStudio({ kind }: { kind: Kind }) {
         </div>
         {kind === "video" && !s.preset && <input className="input !py-2 text-xs" value={s.negative} onChange={(e) => s.setNegative(e.target.value)} placeholder="Avoid: text, watermark, blur…" />}
         {kind === "text" && <input className="input !py-2 text-xs" value={String(s.params.system ?? "")} onChange={(e) => s.set("system", e.target.value)} placeholder="System instruction (optional)" />}
+        {kind === "text" && <ResearchPanel value={s.params.research as ResearchConfig | undefined} onChange={(v) => s.set("research", v)} est={s.est} enabled={!!s.me?.config.research} />}
         <ModelRow models={s.models} value={s.model} onChange={s.setModel} />
         <div className="flex flex-wrap gap-1.5">
           {s.m?.options?.durations && <ChipMenu icon={<Clock size={13} />} label="Duration" value={Number(s.params.duration ?? s.m.options.durations[0])} options={s.m.options.durations} onChange={(v) => s.set("duration", v)} format={(v) => `${v}s`} />}
@@ -159,8 +167,11 @@ function PanelStudio({ kind }: { kind: Kind }) {
           {kind === "text" && <ChipMenu label="Creativity" value={Number(s.params.temperature ?? 0.8)} options={[0.2, 0.5, 0.8, 1, 1.2]} onChange={(v) => s.set("temperature", v)} format={(v) => `temp ${v}`} />}
           <Stepper value={s.count} max={kind === "video" ? 2 : 4} onChange={s.setCount} />
         </div>
-        <button type="button" className="btn-generate" onClick={s.run} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over}>{s.busy ? <Spinner /> : <Sparkles size={16} />} Generate <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-xs">✦ {s.est ? fmtCredits(s.est.credits) : "…"}</span></button>
-        <div className="flex items-center justify-between text-[11px] muted"><span>{s.over ? <span className="text-red-300">Over your remaining {fmtCredits(s.me?.remaining)} credits</span> : s.est ? `≈ $${s.est.usd.toFixed(3)} · ${s.est.breakdown[0]}` : ""}</span><button type="button" className="hover:text-white" onClick={() => setSavePreset(true)} disabled={!s.renderedPrompt.trim()}>Save preset</button></div>
+        <button type="button" className="btn-generate" onClick={() => void s.run()} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over}>{s.busy ? <Spinner /> : <Sparkles size={16} />} Generate <span className="rounded-md bg-black/10 px-1.5 py-0.5 text-xs">{s.est ? usd(s.est.usd) : "…"}</span></button>
+        <div className="space-y-0.5 text-[11px] muted">
+          {s.over ? <div className="text-red-300">This costs more than the {money(s.me?.remaining)} you have left.</div> : s.est && s.est.breakdown.map((b) => <div key={b}>{b}</div>)}
+          <div className="flex items-center justify-between pt-1"><span>{money(s.me?.remaining)} left this month</span><button type="button" className="hover:text-white" onClick={() => setSavePreset(true)} disabled={!s.renderedPrompt.trim()}>Save preset</button></div>
+        </div>
       </aside>
 
       <section className="panel min-w-0 p-3">
@@ -188,6 +199,7 @@ function PanelStudio({ kind }: { kind: Kind }) {
         {tab === "history" && !s.feed.loading && !s.items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-2xl">Nothing here yet</div><p className="muted mt-2 text-sm">Fill in the panel on the left and hit Generate.</p></div></div>}
       </section>
 
+      <CostConfirm open={s.confirming} est={s.est} remainingCredits={s.me?.remaining ?? 0} what={`${kind === "video" ? `${s.count} clip${s.count > 1 ? "s" : ""}` : "Copy"} with ${s.m?.name ?? s.model}`} onConfirm={() => void s.run(true)} onCancel={() => s.setConfirming(false)} />
       <PresetPickerModal open={pickPreset} kind={kind} onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); s.applyPreset(p); }} />
       <SavePresetModal open={savePreset} onClose={() => setSavePreset(false)} seed={{ kind, model: s.model, template: s.renderedPrompt, negative: s.negative, params: s.params, reference_keys: s.refs }} onSaved={() => { setSavePreset(false); say("Preset saved"); }} />
       {s.current && view === "grid" && <Lightbox g={s.current} onClose={() => s.setSelected(null)} onRerun={() => void s.rerun(s.current!)} onDelete={() => void s.remove(s.current!)} onReuse={() => { s.reuse(s.current!); s.setSelected(null); }} onFavorite={() => void s.favorite(s.current!)} />}

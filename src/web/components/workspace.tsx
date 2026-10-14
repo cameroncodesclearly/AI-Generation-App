@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Copy, Download, ImagePlus, RotateCcw, Search, Trash2, X } from "lucide-react";
 import type { Generation, ModelInfo, Preset } from "../../shared/types";
-import { api, fileUrl, fmtCredits, parseJson, timeAgo } from "../lib/api";
+import { api, fileUrl, parseJson, timeAgo } from "../lib/api";
+import { CostTag, NotionLink } from "./Cost";
+import { usd } from "../lib/money";
+import type { ResearchRef } from "../../shared/types";
 import { useCopy } from "../lib/hooks";
 import { Modal, Spinner, StatusPill } from "./ui";
 
@@ -146,7 +149,7 @@ export function FeedItem({ g, active, onSelect }: { g: Gen; active: boolean; onS
       )}
       <div className="flex items-center justify-between gap-3 px-3 py-2 text-[11px] muted">
         <span className="flex items-center gap-2"><ModelBadge id={g.model} />{g.model.split("/").pop()}</span>
-        <span>{fmtCredits(g.actual_credits ?? g.estimate_credits)} cr · {timeAgo(g.created_at)}{g.user_email ? ` · ${g.user_name || g.user_email.split("@")[0]}` : ""}</span>
+        <span><CostTag g={g} className="font-semibold text-white/90" /> · {timeAgo(g.created_at)}{g.user_email ? ` · ${g.user_name || g.user_email.split("@")[0]}` : ""}</span>
       </div>
     </div>
   );
@@ -168,9 +171,15 @@ export function MetaCard({ g, onRerun, onDelete, onReuse }: { g: Gen; onRerun: (
       {typeof params.negative === "string" && params.negative && <p className="text-xs muted"><b>Avoid:</b> {params.negative}</p>}
       {refs.length > 0 && <div className="flex gap-1.5">{refs.map((k) => <img key={k} src={fileUrl(k)} className="h-10 w-10 rounded-md object-cover" alt="" />)}</div>}
       <div className="flex flex-wrap gap-1.5 text-[11px] muted">
-        {Object.entries(params).filter(([k, v]) => !["negative", "system", "cover_for"].includes(k) && v !== "" && v !== undefined).map(([k, v]) => <span key={k} className="rounded-md bg-white/5 px-1.5 py-0.5">{k.replace(/_/g, " ")}: {String(v)}</span>)}
-        <span className="rounded-md bg-white/5 px-1.5 py-0.5">{fmtCredits(g.actual_credits ?? g.estimate_credits)} credits{g.cost_usd !== null && g.cost_usd !== undefined ? ` · $${g.cost_usd.toFixed(3)}` : ""}</span>
+        {Object.entries(params).filter(([k, v]) => !["negative", "system", "cover_for", "research", "research_used"].includes(k) && v !== "" && v !== undefined && typeof v !== "object").map(([k, v]) => <span key={k} className="rounded-md bg-white/5 px-1.5 py-0.5">{k.replace(/_/g, " ")}: {String(v)}</span>)}
+        <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-semibold text-white">{g.status === "done" ? (g.cost_usd !== null ? "Charged " : "Charged (estimate) ") : g.status === "failed" ? "" : "Holding "}<CostTag g={g} /></span>
       </div>
+      {Array.isArray(params.research_used) && (params.research_used as ResearchRef[]).length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] muted">Informed by Social Research</div>
+          <ol className="space-y-0.5 text-xs">{(params.research_used as ResearchRef[]).map((r, n) => <li key={r.id} className="flex gap-1.5"><span className="muted">R{n + 1}</span><NotionLink url={r.url}><span className="line-clamp-1">{r.hook ?? "Untitled"}</span></NotionLink></li>)}</ol>
+        </div>
+      )}
       {g.error && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-2 text-xs text-red-200">{g.error}</div>}
       <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
         <button type="button" className="cchip" onClick={onRerun}><RotateCcw size={13} /> Rerun</button>

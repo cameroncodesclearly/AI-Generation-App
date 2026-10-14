@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { usePoll } from "../lib/hooks";
 import { useEstimate } from "./generation";
 import type { Gen } from "./workspace";
+import { needsConfirm, useChargeNotices } from "./Cost";
 
 /** All state and actions for a creation studio, shared by the image bar layout and the video/text panel layout. */
 export function useStudio(kind: Kind, say: (m: string, k?: "info" | "error") => void) {
@@ -38,9 +39,11 @@ export function useStudio(kind: Kind, say: (m: string, k?: "info" | "error") => 
     setModel(""); setParams({}); setRefs([]); setCount(1); setPreset(null); setVars({}); setSelected(null);
     api.get<{ models: ModelInfo[] }>(`/api/models?kind=${kind}`).then((r) => { setModels(r.models); setModel(sp.get("model") ?? r.models[0]?.id ?? ""); }).catch((e) => say(e.message, "error"));
     const p = sp.get("prompt"); if (p) setPrompt(p);
+    const rids = sp.get("research");
+    if (rids && kind === "text") setParams((p) => ({ ...p, research: { mode: "pick", ids: rids.split(",").filter(Boolean).slice(0, 12) } }));
     const pid = sp.get("preset");
     if (pid) api.get<{ preset: Preset }>(`/api/presets/${pid}`).then((r) => applyPreset(r.preset)).catch(() => say("Preset not found", "error"));
-    if (p || pid) setSp({}, { replace: true });
+    if (p || pid || rids) setSp({}, { replace: true });
   }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const m = useMemo(() => models.find((x) => x.id === model), [models, model]);
@@ -52,7 +55,7 @@ export function useStudio(kind: Kind, say: (m: string, k?: "info" | "error") => 
       if (m.options?.resolutions?.length && !m.options.resolutions.includes(String(prev.resolution))) next.resolution = m.options.resolutions[0];
       if (m.options?.durations?.length && !m.options.durations.includes(Number(prev.duration))) next.duration = m.options.durations[0];
       if (kind === "video" && m.options?.supports_audio && prev.generate_audio === undefined) next.generate_audio = true;
-      if (kind === "text") { next.max_tokens = prev.max_tokens ?? 1500; next.temperature = prev.temperature ?? 0.8; }
+      if (kind === "text") { next.max_tokens = prev.max_tokens ?? 1500; next.temperature = prev.temperature ?? 0.8; if (!prev.research && me?.config.research) next.research = { mode: "auto", count: 6 }; }
       return next;
     });
   }, [m?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,10 +72,14 @@ export function useStudio(kind: Kind, say: (m: string, k?: "info" | "error") => 
   const hasPending = items.some((g) => g.status === "queued" || g.status === "running");
   useEffect(() => { if (!hasPending) void refresh(); }, [hasPending]); // eslint-disable-line react-hooks/exhaustive-deps
   const current = items.find((g) => g.id === selected) ?? null;
+  useChargeNotices(items, say);
+  const [confirming, setConfirming] = useState(false);
 
-  const run = async () => {
+  const run = async (confirmed = false) => {
     if (!renderedPrompt.trim() || !model) return;
     if (missing.length) { say(`Fill in: ${missing.join(", ")}`, "error"); return; }
+    if (!confirmed && needsConfirm(est, me?.remaining ?? 0, me?.config.confirm_over_usd ?? 0.5)) { setConfirming(true); return; }
+    setConfirming(false);
     setBusy(true);
     try {
       const r = await api.post<{ generation: Generation }>("/api/generate", { kind, model, prompt: renderedPrompt, negative: negative || undefined, params, reference_keys: [...presetRefs, ...refs], count, preset_id: preset?.id });
@@ -91,5 +98,5 @@ export function useStudio(kind: Kind, say: (m: string, k?: "info" | "error") => 
   const set = (k: string, v: unknown) => setParams((p) => ({ ...p, [k]: v }));
   const clearPreset = () => { setPreset(null); setVars({}); setNegative(""); };
 
-  return { me, models, model, setModel, m, prompt, setPrompt, negative, setNegative, params, set, refs, setRefs, count, setCount, busy, preset, applyPreset, clearPreset, defs, vars, setVars, renderedPrompt, est, over, missing, feed, items, selected, setSelected, current, scope, setScope, run, rerun, remove, favorite, reuse };
+  return { confirming, setConfirming, me, models, model, setModel, m, prompt, setPrompt, negative, setNegative, params, set, refs, setRefs, count, setCount, busy, preset, applyPreset, clearPreset, defs, vars, setVars, renderedPrompt, est, over, missing, feed, items, selected, setSelected, current, scope, setScope, run, rerun, remove, favorite, reuse };
 }

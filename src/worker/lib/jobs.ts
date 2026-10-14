@@ -5,6 +5,7 @@ import { findModel, usdToCredits } from "./catalog";
 import { refund, settle } from "./credits";
 import { extFor, parseDataUrl, safeJson } from "./util";
 import { r2DataUrl, signedFileUrl } from "./files";
+import { formatResearch, selectResearch, type ResearchConfig } from "./notion";
 
 const POLL_DELAY_S = 20;
 const MAX_POLLS = 90; // 30 minutes
@@ -103,7 +104,9 @@ async function runImage(env: Env, gen: Generation, model: ModelInfo, params: Rec
 
 async function runText(env: Env, gen: Generation, model: ModelInfo, params: Record<string, unknown>, refs: string[]): Promise<void> {
   const refParts = await referenceParts(env, refs);
-  const system = typeof params.system === "string" && params.system.trim() ? params.system.trim() : "You are a sharp creative collaborator for a video production and social content studio. Write with craft, specificity and zero filler.";
+  const base = typeof params.system === "string" && params.system.trim() ? params.system.trim() : "You are a sharp creative collaborator for a video production and social content studio. Write with craft, specificity and zero filler.";
+  const research = formatResearch(await selectResearch(env, gen.prompt, params.research as ResearchConfig | undefined));
+  const system = research ? `${base}\n\n${research}` : base;
   const res = await chat(env, {
     model: model.id,
     messages: [

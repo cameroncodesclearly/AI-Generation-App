@@ -9,3 +9,5 @@ DEV_PRINT_MAGIC_LINK=1
 # Google sign-in (OAuth client of type "Web application"; authorized redirect URI = {APP_URL}/api/auth/google/callback)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Social Research (Notion): an internal integration token with the Social Research database shared to it
+NOTION_TOKEN=

@@ -18,10 +18,14 @@ scripts      Brand-asset generator (OpenRouter)
 
 - **Image, video and copy generation** from one prompt panel: model picker with live prices, aspect ratio, resolution,
   duration, variations, negative prompt, reference images (first/last frame for video).
-- **Credits.** Every request shows an estimate before it runs. The estimate is *reserved* against the person's limit,
-  then *settled* to the real OpenRouter cost when the run finishes (refunded on failure). Admins set a per-person
-  limit, monthly reset or a fixed pool, one-time top-ups, and can disable people. 1 credit = $0.01 of model spend
-  by default, with a configurable markup for safety margin.
+- **Budgets in dollars.** Every request shows its price in dollars before it runs, with a breakdown. Runs over
+  `CONFIRM_OVER_USD` ($0.50 by default) or over a quarter of what's left ask for confirmation. The price is *held*
+  against the person's monthly budget, then *settled* to the exact OpenRouter cost when the run finishes (refunded on
+  failure), with a toast showing estimate vs. charge. The **Spending** page itemises every charge this month. Admins
+  set budgets in USD, monthly reset or a fixed pool, one-time top-ups. Internally 1 unit = $0.001 (`CREDIT_USD`).
+- **Social Research (Notion).** The team's Notion *Social Research* database syncs hourly into D1. Copy runs pull the
+  most relevant entries (by prompt, client focus, type and views) into the model's context and cite them as [R1]..[Rn].
+  Browse and hand-pick entries on the Research page; text presets can lock their own research settings.
 - **Presets.** Reusable prompt templates with `{{inputs}}`, locked parameters and baked-in reference images. Anyone
   runs them from a form; authors and admins edit. Save any studio prompt as a preset in one click. AI-generated covers.
 - **Analyze video.** Drop a file or link plus a note. Get transcript, summary, scene-by-scene visual description,
@@ -53,7 +57,9 @@ npx wrangler queues create studio-jobs
 #    APP_URL      -> your production URL (used in magic links)
 #    MAIL_FROM    -> "Creative Creators <studio@yourdomain.com>" (domain verified in Resend)
 #    ADMIN_EMAILS -> comma-separated admins; these can sign in before being invited
-#    CREDIT_USD / CREDIT_MARKUP / DEFAULT_CREDIT_LIMIT
+#    CREDIT_USD / CREDIT_MARKUP / DEFAULT_CREDIT_LIMIT (units of CREDIT_USD: 25000 × $0.001 = $25/month)
+#    CONFIRM_OVER_USD -> runs at or above this price ask for confirmation
+#    NOTION_RESEARCH_SOURCE / NOTION_RESEARCH_DB -> the Social Research data source + database ids
 
 # 3. Secrets
 npx wrangler secret put OPENROUTER_API_KEY
@@ -64,6 +70,9 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 #   and set GOOGLE_ALLOWED_DOMAINS in wrangler.jsonc (e.g. clearskycreations.com) so anyone on the
 #   Workspace domain gets an account automatically with DEFAULT_CREDIT_LIMIT; others must be invited.
+# Social Research: notion.so/profile/integrations → New internal integration (read content only) → copy the
+# token. Then open the Social Research database in Notion → ••• → Connections → add that integration.
+npx wrangler secret put NOTION_TOKEN
 # optional NAS bridge (see nas-analyzer/README.md)
 npx wrangler secret put NAS_ANALYZER_URL
 npx wrangler secret put NAS_ANALYZER_TOKEN
@@ -97,6 +106,9 @@ falls back to curated models and runs fail with a clear message (credits are ref
 | Refund | Failed or timed-out jobs refund the reservation. |
 | Reset | Monthly limits roll over on first use each month; admins can reset or top up any time. |
 
+Everything a person sees is in dollars: the Generate button, the confirm dialog, the budget pill, the result card
+(`~$x held` while running, exact cost after, `refunded` on failure) and the Spending page (`GET /api/auth/spending`).
+
 Video models are billed by OpenRouter asynchronously; if the job response doesn't carry a cost the estimate stands,
 so keep the admin price overrides honest for video.
 
@@ -117,6 +129,21 @@ The preset system is already in place; this is how to get the most from it.
    looks, not a list of prompts.
 6. **Keep private until proven.** Build as *Only me*, run it a few times, then flip to *Whole team*.
 7. **Ownership.** Authors and admins can edit; everyone can run. Runs are counted so the best presets float up.
+
+**Research-backed copy presets.** For text presets, turn on *Social Research* in the editor: *Auto* with a client focus
+(e.g. `Harbor Auto`) and types (`Compelling Hook`, `Script Example`) pulls the best-matching entries on every run;
+*Pick* locks a hand-chosen set. The selection is frozen at estimate time so the price shown is the price of that run,
+and the result card lists exactly which entries informed it.
+
+## Social Research (Notion)
+
+- Sync: the cron pulls pages edited since the last sync every hour (admins can *Sync now* on the Research page). Page
+  properties (hook, type, platform, views, likes, use case, grade) and the page body (AI breakdown, transcript) are
+  stored in `research_items`. Deleted pages are removed.
+- Retrieval: entries are scored on prompt keywords (hook ×3, use case/notes ×2.5, summary, body) plus a boost for the
+  client focus, filtered by type/platform, with views and grade as a tiebreaker. Up to 12 per run, 6 by default.
+- Cost: research adds roughly 250-350 input tokens per entry (about $0.001 each on Claude Sonnet). The estimate shows it.
+- Without `NOTION_TOKEN` the Research page reads whatever is already in D1 and copy runs simply skip it.
 
 Ideas for the next iteration (not built yet, all straightforward on this schema): preset versioning with rollback,
 "remix" to fork a team preset, chaining (image preset → video preset with the output as first frame), and a per-preset

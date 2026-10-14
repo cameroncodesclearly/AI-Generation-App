@@ -1,5 +1,6 @@
 import { newApp, requireUser } from "../app";
 import { estimateGeneration, findModel } from "../lib/catalog";
+import { formatResearch, selectResearch, type ResearchConfig } from "../lib/notion";
 import { reserve } from "../lib/credits";
 import { extFor, HttpError, id } from "../lib/util";
 import type { Env } from "../env";
@@ -14,8 +15,17 @@ export async function createGeneration(env: Env, user: User, req: GenerateReques
   if (!model || !model.enabled) throw new HttpError(400, "That model is not enabled");
   const refs = (req.reference_keys ?? []).filter((k) => typeof k === "string" && k.startsWith("uploads/")).slice(0, 6);
   const count = Math.max(1, Math.min(req.kind === "video" ? 2 : 4, Number(req.count ?? 1)));
-  const params = { ...(req.params ?? {}), count, ...(req.negative ? { negative: req.negative } : {}) };
-  const est = estimateGeneration(env, model, { kind: req.kind, prompt, params, reference_keys: refs, count });
+  const params: Record<string, unknown> = { ...(req.params ?? {}), count, ...(req.negative ? { negative: req.negative } : {}) };
+  let extraChars = 0;
+  const rcfg = params.research as ResearchConfig | undefined;
+  if (req.kind === "text" && rcfg && rcfg.mode && rcfg.mode !== "off") {
+    const items = await selectResearch(env, prompt, rcfg);
+    extraChars = formatResearch(items).length;
+    // Freeze the exact entries so the run (and any rerun) uses what the estimate priced.
+    params.research = { ...rcfg, mode: "pick", ids: items.map((i) => i.page_id), origin: rcfg.mode };
+    params.research_used = items.map((i) => ({ id: i.page_id, hook: i.hook, url: i.url, type: i.type, platform: i.platform, views: i.views }));
+  } else delete params.research;
+  const est = estimateGeneration(env, model, { kind: req.kind, prompt, params, reference_keys: refs, count, extraChars });
   const gid = id("gen");
   await reserve(env, user.id, est.credits, "generation", gid);
   await env.DB.prepare(

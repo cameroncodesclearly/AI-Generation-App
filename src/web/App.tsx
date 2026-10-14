@@ -11,6 +11,7 @@ import Analyze from "./pages/Analyze";
 import Library from "./pages/Library";
 import Admin from "./pages/Admin";
 import Account from "./pages/Account";
+import Research from "./pages/Research";
 
 function Guard() {
   const { me, loading } = useAuth();
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/library" element={<Library />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/research" element={<Research />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

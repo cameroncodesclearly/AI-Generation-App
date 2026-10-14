@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Film, Image as ImageIcon, LayoutGrid, Plus, Sparkles, Type, Video } from "lucide-react";
 import { useAuth } from "../lib/auth";
-import { api, fileUrl, fmtCredits, parseJson } from "../lib/api";
+import { api, fileUrl, parseJson } from "../lib/api";
+import { money } from "../lib/money";
 import { usePoll } from "../lib/hooks";
 import type { Kind, Preset } from "../../shared/types";
 import type { Gen } from "../components/workspace";
@@ -11,7 +12,7 @@ import { ModelBadge } from "../components/workspace";
 const tiles = [
   { to: "/create/image", icon: ImageIcon, title: "Image", desc: "Nano Banana, GPT Image, FLUX", badge: "Top" },
   { to: "/create/video", icon: Video, title: "Video", desc: "Veo, Sora, Seedance, Kling", badge: "New" },
-  { to: "/create/text", icon: Type, title: "Copy & Ideas", desc: "Claude, GPT-5, Gemini" },
+  { to: "/create/text", icon: Type, title: "Copy & Ideas", desc: "Grounded in our Social Research" },
   { to: "/presets", icon: LayoutGrid, title: "Presets", desc: "Team looks, one click" },
   { to: "/analyze", icon: Film, title: "Analyze Video", desc: "Transcript, summary, visuals", badge: "New" },
 ];
@@ -43,7 +44,7 @@ export default function Home() {
 
       <section className="rays relative">
         <div className="mb-3 text-center">
-          <div className="eyebrow">{me?.user.name || me?.user.email.split("@")[0]} · {fmtCredits(me?.remaining)} credits left</div>
+          <div className="eyebrow">{me?.user.name || me?.user.email.split("@")[0]} · {money(me?.remaining)} of {money(me?.user.credit_limit)} left this month</div>
           <h1 className="display display-sun text-5xl sm:text-6xl">Creative Creators</h1>
         </div>
         <form onSubmit={go} className="promptbar mx-auto max-w-3xl">

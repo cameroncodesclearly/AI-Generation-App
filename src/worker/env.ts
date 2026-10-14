@@ -19,6 +19,10 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_ALLOWED_DOMAINS?: string;
+  NOTION_TOKEN?: string;
+  NOTION_RESEARCH_SOURCE?: string;
+  NOTION_RESEARCH_DB?: string;
+  CONFIRM_OVER_USD?: string;
 }
 
 export type JobMessage =

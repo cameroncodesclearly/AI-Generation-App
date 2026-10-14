@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Mail, Plus, RefreshCw, RotateCcw, Star } from "lucide-react";
 import type { ModelInfo, User } from "../../shared/types";
-import { api, fmtCredits, timeAgo } from "../lib/api";
+import { api, timeAgo } from "../lib/api";
+import { money, toCredits, toUsd, usd } from "../lib/money";
 import { useAuth } from "../lib/auth";
 import { usePoll } from "../lib/hooks";
 import { Field, Modal, Spinner, useToast } from "../components/ui";
@@ -28,14 +29,14 @@ function Team() {
   const [toast, say] = useToast();
   const users = usePoll(() => api.get<{ users: U[] }>("/api/admin/users"), 15000, true);
   const [invite, setInvite] = useState(false);
-  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [limit, setLimit] = useState(2000); const [role, setRole] = useState<"member" | "admin">("member"); const [tempPw, setTempPw] = useState("");
+  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [limit, setLimit] = useState(25); const [role, setRole] = useState<"member" | "admin">("member"); const [tempPw, setTempPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<U | null>(null);
   const patch = async (u: U, body: Partial<User>) => { try { await api.patch(`/api/admin/users/${u.id}`, body); void users.reload(); say("Updated"); } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } };
   const add = async () => {
     setBusy(true);
     try {
-      const r = await api.post<{ invited: boolean; devLink?: string }>("/api/admin/users", { email, name, credit_limit: limit, role, password: tempPw || undefined, send_invite: !tempPw });
+      const r = await api.post<{ invited: boolean; devLink?: string }>("/api/admin/users", { email, name, credit_limit: toCredits(limit), role, password: tempPw || undefined, send_invite: !tempPw });
       say(tempPw ? `Added. Share the temporary password with ${email} directly.` : r.invited ? `Invite sent to ${email}` : r.devLink ? "Added (dev: link in console)" : "Added; invite email not sent (check RESEND_API_KEY)");
       if (r.devLink) console.log("[invite link]", r.devLink);
       setInvite(false); setEmail(""); setName(""); setTempPw(""); void users.reload();
@@ -44,7 +45,7 @@ function Team() {
   return (
     <div className="space-y-3">
       {toast}
-      <div className="flex items-center justify-between"><div className="muted text-sm">{users.data?.users.length ?? 0} people · credit limits reset monthly unless set to never</div><button className="btn btn-sun" onClick={() => setInvite(true)}><Plus size={16} /> Invite</button></div>
+      <div className="flex items-center justify-between"><div className="muted text-sm">{users.data?.users.length ?? 0} people · budgets reset monthly unless set to never</div><button className="btn btn-sun" onClick={() => setInvite(true)}><Plus size={16} /> Invite</button></div>
       <div className="glass glass-strong overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="muted text-left text-xs"><tr><th className="p-3">Person</th><th className="p-3">Role</th><th className="p-3">Credits</th><th className="p-3">Spend</th><th className="p-3">Activity</th><th className="p-3"></th></tr></thead>
@@ -55,7 +56,7 @@ function Team() {
                 <tr key={u.id} className={`border-t border-white/5 ${u.status === "disabled" ? "opacity-50" : ""}`}>
                   <td className="p-3"><div className="font-semibold">{u.name || u.email.split("@")[0]}</div><div className="muted text-xs">{u.email}{u.status === "disabled" ? " · disabled" : ""}</div></td>
                   <td className="p-3"><select className="select py-1 text-xs" value={u.role} disabled={u.id === me?.user.id} onChange={(e) => void patch(u, { role: e.target.value as User["role"] })}><option value="member">member</option><option value="admin">admin</option></select></td>
-                  <td className="p-3 min-w-44"><div className="flex items-center justify-between text-xs"><span>{fmtCredits(u.credits_used)} / <b>{fmtCredits(u.credit_limit)}</b></span><span className="muted">{Math.round(pct)}%</span></div><div className="meter mt-1"><div style={{ width: `${pct}%` }} /></div></td>
+                  <td className="p-3 min-w-44"><div className="flex items-center justify-between text-xs"><span className="tabular-nums">{money(u.credits_used)} / <b>{money(u.credit_limit)}</b></span><span className="muted">{Math.round(pct)}%</span></div><div className="meter mt-1"><div style={{ width: `${pct}%` }} /></div></td>
                   <td className="p-3 text-xs"><div>${Number(u.period_usd ?? 0).toFixed(2)} real</div><div className="muted">{u.generations} gens · {u.analyses} analyses</div></td>
                   <td className="p-3 text-xs muted">{u.last_seen_at ? timeAgo(u.last_seen_at) : "never"}</td>
                   <td className="p-3"><div className="flex justify-end gap-1"><button className="btn btn-sm" onClick={() => setEdit(u)}>Edit</button><button className="btn btn-sm" title="Resend sign-in link" onClick={async () => { await api.post(`/api/admin/users/${u.id}/invite`); say("Sign-in link sent"); }}><Mail size={13} /></button></div></td>
@@ -70,7 +71,7 @@ function Team() {
           <Field label="Email"><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus /></Field>
           <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Monthly credit limit" hint={`≈ $${(limit * (me?.config.credit_usd ?? 0.01)).toFixed(0)} of model spend`}><input className="input" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></Field>
+            <Field label="Monthly budget (USD)" hint="What they can spend on models each month"><input id="invite-budget" className="input" type="number" min={0} step={1} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></Field>
             <Field label="Role"><select className="select" value={role} onChange={(e) => setRole(e.target.value as "member" | "admin")}><option value="member">Member</option><option value="admin">Admin</option></select></Field>
           </div>
           <Field label="Temporary password (optional)" hint="If set, no email is sent: tell them the password yourself. They must replace it on first sign-in. Leave blank to email a sign-in link instead."><input className="input" type="text" autoComplete="off" value={tempPw} onChange={(e) => setTempPw(e.target.value)} placeholder="e.g. Studio-2026-welcome" /></Field>
@@ -85,13 +86,13 @@ function Team() {
 function EditUser({ u, onClose, onChanged }: { u: U; onClose: () => void; onChanged: () => void }) {
   const { me } = useAuth();
   const [toast, say] = useToast();
-  const [name, setName] = useState(u.name ?? ""); const [limit, setLimit] = useState(u.credit_limit); const [reset, setReset] = useState(u.period_reset); const [status, setStatus] = useState(u.status);
+  const [name, setName] = useState(u.name ?? ""); const [limit, setLimit] = useState(Number(toUsd(u.credit_limit).toFixed(2))); const [reset, setReset] = useState(u.period_reset); const [status, setStatus] = useState(u.status);
   const [grant, setGrant] = useState(0);
   const [newPw, setNewPw] = useState("");
   const save = async () => {
     try {
-      await api.patch(`/api/admin/users/${u.id}`, { name, credit_limit: limit, period_reset: reset, status });
-      if (grant) await api.post(`/api/admin/users/${u.id}/adjust`, { delta: -grant });
+      await api.patch(`/api/admin/users/${u.id}`, { name, credit_limit: toCredits(limit), period_reset: reset, status });
+      if (grant) await api.post(`/api/admin/users/${u.id}/adjust`, { delta: -toCredits(grant) });
       if (newPw) await api.post(`/api/admin/users/${u.id}/password`, { password: newPw });
       onChanged();
     } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); }
@@ -102,15 +103,15 @@ function EditUser({ u, onClose, onChanged }: { u: U; onClose: () => void; onChan
       <div className="space-y-3">
         <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Credit limit per period" hint={`≈ $${(limit * (me?.config.credit_usd ?? 0.01)).toFixed(0)}`}><input className="input" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></Field>
+          <Field label="Budget per period (USD)"><input id="edit-budget" className="input" type="number" min={0} step={1} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></Field>
           <Field label="Reset"><select className="select" value={reset} onChange={(e) => setReset(e.target.value as User["period_reset"])}><option value="monthly">Monthly</option><option value="never">Never (one-off pool)</option></select></Field>
           <Field label="Status"><select className="select" value={status} disabled={u.id === me?.user.id} onChange={(e) => setStatus(e.target.value as User["status"])}><option value="active">Active</option><option value="disabled">Disabled</option></select></Field>
-          <Field label="One-time top-up (credits)" hint="Adds credits for this period only"><input className="input" type="number" value={grant} onChange={(e) => setGrant(Number(e.target.value))} /></Field>
+          <Field label="One-time top-up (USD)" hint="Adds to this month only"><input id="edit-topup" className="input" type="number" min={0} step={1} value={grant} onChange={(e) => setGrant(Number(e.target.value))} /></Field>
         </div>
         <Field label="Reset to a temporary password (optional)" hint={`${u.has_password ? "Has a password." : "No password yet."} Setting one signs them out everywhere and asks them to choose a new one.`}><input className="input" type="text" autoComplete="off" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="Leave blank to keep" /></Field>
-        <div className="muted text-xs">Used {fmtCredits(u.credits_used)} this period (since {u.period_start}).</div>
+        <div className="muted text-xs">Spent {money(u.credits_used)} this period (since {u.period_start}).</div>
         <div className="flex justify-between">
-          <button className="btn btn-sm" onClick={async () => { if (confirm("Reset this person's used credits to zero?")) { await api.post(`/api/admin/users/${u.id}/reset`); onChanged(); } }}><RotateCcw size={14} /> Reset usage</button>
+          <button className="btn btn-sm" onClick={async () => { if (confirm("Reset this person's spend for the month to $0?")) { await api.post(`/api/admin/users/${u.id}/reset`); onChanged(); } }}><RotateCcw size={14} /> Reset usage</button>
           <button className="btn btn-sun" onClick={save}>Save</button>
         </div>
       </div>
@@ -172,15 +173,15 @@ function Usage() {
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="glass glass-strong p-4"><div className="eyebrow mb-2">By person (this period)</div>
-          {(data.data?.byUser ?? []).map((u) => <div key={u.id} className="flex items-center justify-between py-1.5 text-sm"><span>{u.name || u.email}</span><span className="muted text-xs">{fmtCredits(u.credits_used)} / {fmtCredits(u.credit_limit)} cr ≈ ${(u.credits_used * (me?.config.credit_usd ?? 0.01)).toFixed(2)}</span></div>)}
+          {(data.data?.byUser ?? []).map((u) => <div key={u.id} className="flex items-center justify-between py-1.5 text-sm"><span>{u.name || u.email}</span><span className="muted text-xs tabular-nums">{money(u.credits_used)} of {money(u.credit_limit)}</span></div>)}
         </div>
         <div className="glass glass-strong p-4"><div className="eyebrow mb-2">By model (30 days)</div>
-          {(data.data?.byModel ?? []).map((m) => <div key={`${m.kind}${m.model}`} className="flex items-center justify-between py-1.5 text-sm"><span>{m.model.split("/").pop()} <span className="muted text-xs">{m.kind}</span></span><span className="muted text-xs">{m.runs} runs · {fmtCredits(m.credits)} cr · ${Number(m.usd).toFixed(2)}</span></div>)}
+          {(data.data?.byModel ?? []).map((m) => <div key={`${m.kind}${m.model}`} className="flex items-center justify-between py-1.5 text-sm"><span>{m.model.split("/").pop()} <span className="muted text-xs">{m.kind}</span></span><span className="muted text-xs">{m.runs} runs · {usd(Number(m.usd))}</span></div>)}
           {!(data.data?.byModel ?? []).length && <div className="muted text-sm">No completed runs yet.</div>}
         </div>
       </div>
       <div className="glass glass-strong p-4"><div className="eyebrow mb-2">Recent ledger</div>
-        <div className="divide-y divide-white/5 text-sm">{(data.data?.recent ?? []).slice(0, 40).map((e) => <div key={e.id} className="flex items-center justify-between py-1.5"><span>{e.email} <span className="muted text-xs">{e.reason} · {e.ref_type}</span></span><span className="flex gap-3"><span className={e.delta > 0 ? "text-red-200" : "text-green-200"}>{e.delta > 0 ? "−" : "+"}{Math.abs(e.delta)}</span><span className="muted w-16 text-right text-xs">{timeAgo(e.created_at)}</span></span></div>)}</div>
+        <div className="divide-y divide-white/5 text-sm">{(data.data?.recent ?? []).slice(0, 40).map((e) => <div key={e.id} className="flex items-center justify-between py-1.5"><span>{e.email} <span className="muted text-xs">{e.reason} · {e.ref_type}</span></span><span className="flex gap-3"><span className={e.delta > 0 ? "text-red-200" : "text-green-200"}>{e.delta > 0 ? "−" : "+"}{money(Math.abs(e.delta), { precise: true })}</span><span className="muted w-16 text-right text-xs">{timeAgo(e.created_at)}</span></span></div>)}</div>
       </div>
     </div>
   );

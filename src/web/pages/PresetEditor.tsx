@@ -6,6 +6,9 @@ import { api, fileUrl, parseJson } from "../lib/api";
 import { Field, Spinner, useToast } from "../components/ui";
 import { ModelPicker, ReferenceUploader } from "../components/generation";
 import { useModels } from "./Presets";
+import { ResearchPanel } from "../components/research";
+import { useAuth } from "../lib/auth";
+import type { ResearchConfig } from "../../shared/types";
 
 const blank: PresetVariable = { key: "", label: "", type: "text", default: "", required: true };
 
@@ -28,6 +31,7 @@ export default function PresetEditor() {
   const [coverKey, setCoverKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
+  const { me } = useAuth();
 
   useEffect(() => {
     if (!id) return;
@@ -104,6 +108,7 @@ export default function PresetEditor() {
               {kind === "text" && <Field label="Max tokens"><input className="input" type="number" value={Number(params.max_tokens ?? 1500)} onChange={(e) => set("max_tokens", Number(e.target.value))} /></Field>}
             </div>
             {kind === "text" && <Field label="System instruction"><textarea className="textarea" rows={3} value={String(params.system ?? "")} onChange={(e) => set("system", e.target.value)} placeholder="You are the lead copywriter for…" /></Field>}
+            {kind === "text" && <ResearchPanel value={params.research as ResearchConfig | undefined} onChange={(v) => set("research", v)} est={null} enabled={!!me?.config.research} />}
             {kind !== "text" && <ReferenceUploader keys={refs} onChange={setRefs} max={4} label="Baked-in reference images (style, product, character)" />}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Visibility"><select className="select" value={visibility} onChange={(e) => setVisibility(e.target.value as "team" | "private")}><option value="team">Whole team</option><option value="private">Only me</option></select></Field>
@@ -148,7 +153,7 @@ export default function PresetEditor() {
               <button className="btn btn-sm" onClick={generateCover} disabled={coverBusy || !id}>{coverBusy ? <Spinner /> : <ImageIcon size={14} />} Generate with AI</button>
               <label className="btn btn-sm cursor-pointer">Upload<input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; const fd = new FormData(); fd.append("file", f); fd.append("kind", "image"); const r = await api.form<{ key: string }>("/api/upload", fd); setCoverKey(r.key); }} /></label>
             </div>
-            <div className="muted mt-2 text-[11px]">AI covers cost a few credits from your balance and use the preset's description.</div>
+            <div className="muted mt-2 text-[11px]">AI covers cost about $0.04 from your budget and use the preset's description.</div>
           </div>
           <div className="glass glass-strong p-4">
             <div className="eyebrow mb-2">Preview with defaults</div>

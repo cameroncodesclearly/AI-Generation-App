@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, ImagePlus, Trash2, X } from "lucide-react";
 import type { Estimate, Generation, Kind, ModelInfo } from "../../shared/types";
-import { api, fileUrl, fmtCredits, parseJson, timeAgo } from "../lib/api";
+import { api, fileUrl, parseJson, timeAgo } from "../lib/api";
+import { usd } from "../lib/money";
+import { CostTag } from "./Cost";
 import { useDebounced } from "../lib/hooks";
 import { CopyButton, Spinner, StatusPill } from "./ui";
 
@@ -41,7 +43,7 @@ export function EstimateChip({ est, remaining }: { est: Estimate | null; remaini
   const over = est.credits > remaining;
   return (
     <span className={`chip ${over ? "border-red-400/50 text-red-200" : "chip-on"}`} title={`${est.breakdown.join(" · ")}${est.warning ? ` — ${est.warning}` : ""}`}>
-      ≈ {fmtCredits(est.credits)} credits <span className="opacity-60">(${est.usd.toFixed(3)})</span>{over && " · over your limit"}
+      ≈ {usd(est.usd)}{over && " · more than you have left"}
     </span>
   );
 }
@@ -114,7 +116,7 @@ export function GenerationCard({ g, onDelete, compact = false }: { g: Generation
         )}
         <div className="flex items-center justify-between gap-2">
           <StatusPill status={g.status} />
-          <span className="text-[11px] muted">{g.model.split("/").pop()} · {fmtCredits(g.actual_credits ?? g.estimate_credits)} cr{g.actual_credits === null && pending ? " est." : ""} · {timeAgo(g.created_at)}{g.user_email ? ` · ${g.user_name || g.user_email.split("@")[0]}` : ""}</span>
+          <span className="text-[11px] muted">{g.model.split("/").pop()} · <CostTag g={g} /> · {timeAgo(g.created_at)}{g.user_email ? ` · ${g.user_name || g.user_email.split("@")[0]}` : ""}</span>
         </div>
         {!compact && <p className="mt-2 line-clamp-3 text-xs muted" title={g.prompt}>{g.prompt}</p>}
         {!compact && (

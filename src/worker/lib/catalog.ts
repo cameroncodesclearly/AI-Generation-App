@@ -170,7 +170,7 @@ export async function findModel(env: Env, id: string, kind: Kind | "analyze"): P
 }
 
 export function creditConfig(env: Env) {
-  const usd = parseFloat(env.CREDIT_USD || "0.01") || 0.01;
+  const usd = parseFloat(env.CREDIT_USD || "0.001") || 0.001;
   const markup = parseFloat(env.CREDIT_MARKUP || "1") || 1;
   return { usd, markup };
 }
@@ -185,7 +185,7 @@ export function approxTokens(text: string): number {
 }
 
 /** Estimate the credit cost of a generation request before it runs. */
-export function estimateGeneration(env: Env, model: ModelInfo, req: { kind: Kind; prompt: string; params?: Record<string, unknown>; reference_keys?: string[]; count?: number }): Estimate {
+export function estimateGeneration(env: Env, model: ModelInfo, req: { kind: Kind; prompt: string; params?: Record<string, unknown>; reference_keys?: string[]; count?: number; extraChars?: number }): Estimate {
   const breakdown: string[] = [];
   let usd = 0;
   const count = Math.max(1, Math.min(8, Number(req.count ?? 1)));
@@ -205,15 +205,17 @@ export function estimateGeneration(env: Env, model: ModelInfo, req: { kind: Kind
     usd = per * seconds * mult * count + (model.pricing.per_request ?? 0) * count;
     breakdown.push(`${seconds}s × $${per.toFixed(3)}/s${mult !== 1 ? ` × ${mult} (${res})` : ""}${count > 1 ? ` × ${count}` : ""}`);
   } else {
-    const promptTokens = approxTokens(req.prompt) + 120;
+    const researchTokens = req.extraChars ? Math.ceil(req.extraChars / 3.6) : 0;
+    const promptTokens = approxTokens(req.prompt) + 120 + researchTokens;
     const maxTokens = Math.min(16000, Math.max(64, Number(params.max_tokens ?? 1500)));
     const p = model.pricing.prompt ?? 1e-6;
     const c = model.pricing.completion ?? 5e-6;
     usd = (promptTokens * p + maxTokens * c) * count;
-    breakdown.push(`≈${promptTokens} in + up to ${maxTokens} out tokens`);
+    breakdown.push(`≈${promptTokens.toLocaleString()} in + up to ${maxTokens.toLocaleString()} out tokens`);
+    if (researchTokens) breakdown.push(`includes ≈${researchTokens.toLocaleString()} tokens of Social Research context`);
   }
   const credits = usdToCredits(env, usd);
-  return { credits, usd, breakdown, warning: model.source === "curated" && req.kind !== "text" ? "Pricing is a curated estimate; actual cost is reconciled after the run." : undefined };
+  return { credits, usd: credits * creditConfig(env).usd, breakdown, warning: req.kind === "text" ? "Copy is billed by the tokens actually used, so the final charge is usually lower than this." : model.source === "curated" ? "Price is from our model list; the final charge uses the cost the provider reports." : undefined };
 }
 
 /** Estimate a video analysis: Gemini bills ~258 tokens per second of video + audio ~32 tokens/s; we add output. */
@@ -222,5 +224,6 @@ export function estimateAnalysis(env: Env, model: ModelInfo, durationSeconds: nu
   const inputTokens = secs * 300 + approxTokens(note) + 600;
   const outputTokens = 2500;
   const usd = inputTokens * (model.pricing.prompt ?? 0.3e-6) + outputTokens * (model.pricing.completion ?? 2.5e-6);
-  return { credits: usdToCredits(env, usd), usd, breakdown: [`≈${secs}s of video (${inputTokens.toLocaleString()} tokens in, ${outputTokens} out)`], warning: durationSeconds ? undefined : "Duration unknown; assuming 60s until processed." };
+  const credits = usdToCredits(env, usd);
+  return { credits, usd: credits * creditConfig(env).usd, breakdown: [`≈${secs}s of video (${inputTokens.toLocaleString()} tokens in, ${outputTokens} out)`], warning: durationSeconds ? undefined : "Duration unknown; assuming 60s until processed." };
 }

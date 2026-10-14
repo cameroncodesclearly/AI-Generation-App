@@ -1,7 +1,7 @@
 import { newApp, requireAdmin, requireUser } from "../app";
 import { createUser, getUserByEmail, issueMagicLink, publicUser } from "../lib/auth";
 import { hashPassword, validatePassword } from "../lib/password";
-import { getCatalog } from "../lib/catalog";
+import { creditConfig, getCatalog } from "../lib/catalog";
 import { inviteEmail, sendMail } from "../lib/mail";
 import { HttpError, id } from "../lib/util";
 import type { User } from "../../shared/types";
@@ -36,7 +36,7 @@ admin.post("/users", async (c) => {
       invited = r.sent; devLink = r.devLink;
       if (r.sent) {
         // issueMagicLink already sent a sign-in mail; also send a friendlier invite with the credit allowance.
-        const { html, text } = inviteEmail(c.env.APP_NAME, `${c.env.APP_URL.replace(/\/$/, "")}/login`, me.name ?? me.email, user.credit_limit);
+        const { html, text } = inviteEmail(c.env.APP_NAME, `${c.env.APP_URL.replace(/\/$/, "")}/login`, me.name ?? me.email, user.credit_limit * creditConfig(c.env).usd);
         c.executionCtx.waitUntil(sendMail(c.env, email, `${me.name ?? me.email} invited you to ${c.env.APP_NAME}`, html, text).catch(() => {}));
       }
     } catch (e) { devLink = undefined; console.warn("invite mail failed", e); }

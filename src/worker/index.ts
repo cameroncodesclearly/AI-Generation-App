@@ -12,6 +12,9 @@ import generate from "./routes/generate";
 import presets from "./routes/presets";
 import analyze from "./routes/analyze";
 import admin from "./routes/admin";
+import research from "./routes/research";
+import { notionEnabled, syncResearch } from "./lib/notion";
+import { safeJson } from "./lib/util";
 
 const app = newApp();
 
@@ -29,6 +32,7 @@ app.route("/api", generate);
 app.route("/api/presets", presets);
 app.route("/api/analyses", analyze);
 app.route("/api/admin", admin);
+app.route("/api/research", research);
 
 // --- File serving ---------------------------------------------------------
 const files = new Hono<AppEnv>();
@@ -94,7 +98,13 @@ export default {
   },
 
   /** Safety net: re-drive anything that looks stuck (lost queue message, worker restart). */
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Hourly refresh of the Notion Social Research cache.
+    if (notionEnabled(env)) {
+      const last = await env.DB.prepare("SELECT value FROM settings WHERE key = 'research_synced_at'").first<{ value: string }>();
+      const at = safeJson<{ at?: string }>(last?.value, {}).at;
+      if (!at || Date.now() - new Date(at.replace(" ", "T") + "Z").getTime() > 55 * 60_000) ctx.waitUntil(syncResearch(env).catch((e) => console.error("research sync failed", e)));
+    }
     const stuckVideo = await env.DB.prepare("SELECT id FROM generations WHERE kind = 'video' AND status = 'running' AND provider_job_id IS NOT NULL AND created_at < datetime('now','-3 minutes') AND created_at > datetime('now','-2 hours')").all<{ id: string }>();
     for (const g of stuckVideo.results) await env.JOBS.send({ type: "video_poll", id: g.id, attempt: 1 });
     const stale = await env.DB.prepare("SELECT id FROM generations WHERE status = 'queued' AND created_at < datetime('now','-5 minutes') AND created_at > datetime('now','-2 hours')").all<{ id: string }>();

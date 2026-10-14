@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Clapperboard, FolderOpen, Search } from "lucide-react";
 import { useAuth } from "../lib/auth";
-import { fmtCredits } from "../lib/api";
+import { money } from "../lib/money";
 import SearchOverlay from "./SearchOverlay";
 
 const links = [
@@ -11,6 +11,7 @@ const links = [
   { to: "/create/video", label: "Video" },
   { to: "/create/text", label: "Copy" },
   { to: "/analyze", label: "Analyze", badge: "New" },
+  { to: "/research", label: "Research" },
   { to: "/presets", label: "Presets" },
 ];
 
@@ -35,9 +36,9 @@ export default function Shell() {
           {links.map((l) => <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `topnav-link flex items-center gap-1.5 ${isActive ? "active" : ""}`}>{l.label}{l.badge && <span className="badge badge-new">{l.badge}</span>}</NavLink>)}
         </nav>
         <button className="icon-btn" title="Search (⌘K)" onClick={() => setSearch(true)}><Search size={15} /></button>
-        <NavLink to="/account" className="cchip !py-1.5" title={`${fmtCredits(me.user.credits_used)} of ${fmtCredits(me.user.credit_limit)} used`}>
+        <NavLink to="/account" className="cchip !py-1.5" title={`Spent ${money(me.user.credits_used)} of your ${money(me.user.credit_limit)} monthly budget. Click for every charge.`}>
           <span className="meter !h-1.5 w-12"><div style={{ width: `${pct}%` }} /></span>
-          <span className="text-sun">✦ {fmtCredits(me.remaining)}</span>
+          <span className="text-sun">{money(me.remaining)} left</span>
         </NavLink>
         <NavLink to="/library" className={({ isActive }) => `cchip !py-1.5 ${isActive ? "!text-sun" : ""}`}><FolderOpen size={14} /> Assets</NavLink>
         <div className="relative">
@@ -46,7 +47,7 @@ export default function Shell() {
             <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
             <div className="menu right-0 top-[calc(100%+8px)] w-56">
               <div className="px-3 py-2"><div className="truncate text-sm font-semibold">{me.user.name || me.user.email.split("@")[0]}</div><div className="truncate text-xs muted">{me.user.email}</div></div>
-              <NavLink to="/account" className="menu-item" onClick={() => setMenu(false)}>Account & credits</NavLink>
+              <NavLink to="/account" className="menu-item" onClick={() => setMenu(false)}>Spending & account</NavLink>
               <NavLink to="/library?favorite=1" className="menu-item" onClick={() => setMenu(false)}>Favourites</NavLink>
               <NavLink to="/presets/new" className="menu-item" onClick={() => setMenu(false)}>New preset</NavLink>
               {me.user.role === "admin" && <NavLink to="/admin" className="menu-item" onClick={() => setMenu(false)}>Admin</NavLink>}

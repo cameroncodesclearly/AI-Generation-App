@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FileSpreadsheet, Film, Link2, RefreshCw, Trash2, Upload } from "lucide-react";
 import type { Analysis, Batch, Estimate, ModelInfo } from "../../shared/types";
-import { api, fmtCredits, parseJson, timeAgo } from "../lib/api";
+import { api, parseJson, timeAgo } from "../lib/api";
+import { money, usd } from "../lib/money";
+import { CostTag } from "../components/Cost";
 import { useAuth } from "../lib/auth";
 import { useDebounced, usePoll } from "../lib/hooks";
 import { CopyBlock, CopyButton, Field, Modal, Spinner, StatusPill, useToast } from "../components/ui";
@@ -46,7 +48,7 @@ export default function Analyze() {
       }
       const r = await api.post<{ analysis: Analysis }>("/api/analyses", { source_url: url.trim() || undefined, file_key, filename, note, model });
       setUrl(""); setFile(null); if (fileRef.current) fileRef.current.value = "";
-      say(`Queued · ${r.analysis.estimate_credits} credits reserved`); void list.reload(); void refresh();
+      say(`Queued · ${money(r.analysis.estimate_credits)} held, adjusted to the exact cost when it finishes`); void list.reload(); void refresh();
     } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } finally { setBusy(false); }
   };
 
@@ -100,7 +102,7 @@ export default function Analyze() {
           </>)}
           <Field label="Model"><select className="select" value={model} onChange={(e) => setModel(e.target.value)}>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Field>
           <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-            <span className="chip chip-on" title={est?.breakdown.join(" · ")}>≈ {fmtCredits(est?.credits)} credits / video</span>
+            <span className="chip chip-on" title={est?.breakdown.join(" · ")}>≈ {est ? usd(est.usd) : "…"} per video</span>
             {tab === "single"
               ? <button className="btn btn-sun" onClick={submit} disabled={busy || (!url.trim() && !file)}>{busy ? <Spinner /> : <Film size={16} />} Analyze</button>
               : <button className="btn btn-sun" onClick={submitBatch} disabled={busy || (!csv && !rowsText.trim())}>{busy ? <Spinner /> : <FileSpreadsheet size={16} />} Run batch</button>}
@@ -138,7 +140,7 @@ export default function Analyze() {
                       <StatusPill status={a.status} />
                     </div>
                     <div className="muted mt-1 line-clamp-2 text-xs">{a.status === "failed" ? <span className="text-red-300">{a.error}</span> : a.summary || (a.status === "running" ? "Watching the video…" : a.note || "Queued")}</div>
-                    <div className="muted mt-1 text-[11px]">{String(x.format ?? "")}{x.format ? " · " : ""}{fmtCredits(a.actual_credits ?? a.estimate_credits)} cr · {timeAgo(a.created_at)}</div>
+                    <div className="muted mt-1 text-[11px]">{String(x.format ?? "")}{x.format ? " · " : ""}<CostTag g={a} /> · {timeAgo(a.created_at)}</div>
                   </div>
                 );
               })}
@@ -161,7 +163,7 @@ function AnalysisModal({ a, onClose, onChanged }: { a: Analysis; onClose: () => 
         <StatusPill status={a.status} />
         {x.format && <span className="chip">{x.format}</span>}
         {x.duration_seconds ? <span className="chip">{Math.round(Number(x.duration_seconds))}s</span> : null}
-        <span className="chip">{fmtCredits(a.actual_credits ?? a.estimate_credits)} credits</span>
+        <span className="chip"><CostTag g={a} /></span>
         <span className="ml-auto flex gap-2">
           <CopyButton text={all} id="all" label="Copy everything" />
           {a.status === "failed" && <button className="btn btn-sm" onClick={async () => { await api.post(`/api/analyses/${a.id}/retry`); onChanged(); onClose(); }}><RefreshCw size={14} /> Retry</button>}

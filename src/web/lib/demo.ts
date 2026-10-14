@@ -2,7 +2,8 @@
  * Demo mode: a fully in-browser mock of the API so the UI can be explored without Cloudflare, OpenRouter or Resend.
  * Enabled by VITE_DEMO=1 at build time. Nothing here ships in the real build.
  */
-import type { Analysis, Generation, Kind, ModelInfo, Preset, User } from "../../shared/types";
+import type { Analysis, Generation, Kind, ModelInfo, Preset, ResearchConfig, ResearchItem, SpendRow, User } from "../../shared/types";
+import researchSample from "../../../scripts/research-sample.json";
 
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 export const demoFiles = new Map<string, string>(); // key -> data URL
@@ -14,9 +15,9 @@ const id = (p: string) => `${p}_demo${(seq++).toString(36)}`;
 
 // ---- Seeded team ---------------------------------------------------------
 const users: (User & { generations?: number; analyses?: number; period_usd?: number })[] = [
-  { id: "usr_cam", email: "cameron@clearskycreations.com", name: "Cameron", role: "admin", status: "active", credit_limit: 2000, credits_used: 212, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(400), last_seen_at: now(), has_password: true, must_set_password: 0 },
-  { id: "usr_edie", email: "edie@clearskycreations.com", name: "Edie", role: "member", status: "active", credit_limit: 800, credits_used: 455, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(300), last_seen_at: ago(3), has_password: true, must_set_password: 0 },
-  { id: "usr_marco", email: "marco@clearskycreations.com", name: "Marco", role: "member", status: "active", credit_limit: 500, credits_used: 60, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(200), last_seen_at: ago(26), has_password: false, must_set_password: 0 },
+  { id: "usr_cam", email: "cameron@clearskycreations.com", name: "Cameron", role: "admin", status: "active", credit_limit: 25000, credits_used: 2120, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(400), last_seen_at: now(), has_password: true, must_set_password: 0 },
+  { id: "usr_edie", email: "edie@clearskycreations.com", name: "Edie", role: "member", status: "active", credit_limit: 8000, credits_used: 4550, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(300), last_seen_at: ago(3), has_password: true, must_set_password: 0 },
+  { id: "usr_marco", email: "marco@clearskycreations.com", name: "Marco", role: "member", status: "active", credit_limit: 5000, credits_used: 600, period_start: "2026-10-01", period_reset: "monthly", created_at: ago(200), last_seen_at: ago(26), has_password: false, must_set_password: 0 },
 ];
 let me = users[0];
 let loggedIn = true;
@@ -72,6 +73,44 @@ const presets: (Preset & { author_name?: string })[] = [
 ];
 presets.forEach((p, i) => { p.cover_key = putFile(`covers/${p.id}.jpg`, render(p.name, "1:1", i + 2, p.category)); });
 
+// ---- Social Research (mirrors worker/lib/notion.ts) -----------------------
+const research: ResearchItem[] = (researchSample as Partial<ResearchItem>[]).map((r) => ({
+  page_id: (r.url ?? "").split("/").pop() ?? id("res"), url: r.url ?? null, hook: r.hook ?? null, type: r.type ?? null, platform: r.platform ?? null,
+  views: r.views ?? null, likes: r.likes ?? null, comments: r.comments ?? null, shares: r.shares ?? null, saves: null, engagement: null, grade: r.grade ?? null,
+  success_score: null, use_case: r.use_case ?? null, notes: null, submitted_by: r.submitted_by ?? null, posted: r.posted ?? null, link: null, ai_status: "Done",
+  summary: r.summary ?? null, body: `## AI breakdown\n${r.summary ?? ""}\n\n## Transcript\n(Transcript lives on the Notion page.)`,
+}));
+let researchSynced = ago(0.4);
+const STOP = new Set("a an and are as at be but by for from has have i in is it its me my of on or our so that the their them this to us was we what with you your write make create give 10 five ten hooks hook script scripts video videos post posts about".split(" "));
+const tokenize = (t: string) => [...new Set(t.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w)))];
+const perf = (i: ResearchItem) => Math.log10((i.views ?? 0) + 1) * 0.6 + (i.grade ?? 0) * 0.25 + 1;
+function scoreItem(i: ResearchItem, tokens: string[], focus: string[]) {
+  const hook = (i.hook ?? "").toLowerCase(); const uc = (i.use_case ?? "").toLowerCase(); const sum = (i.summary ?? "").toLowerCase(); let s = 0;
+  for (const t of tokens) { if (hook.includes(t)) s += 3; if (uc.includes(t)) s += 2.5; if (sum.includes(t)) s += 1; }
+  for (const f of focus) { if (uc.includes(f)) s += 6; if (hook.includes(f) || sum.includes(f)) s += 2; }
+  return s;
+}
+function selectResearch(prompt: string, cfg?: ResearchConfig): ResearchItem[] {
+  if (!cfg || !cfg.mode || cfg.mode === "off") return [];
+  if (cfg.mode === "pick") return (cfg.ids ?? []).slice(0, 12).map((x) => research.find((r) => r.page_id === x)).filter((r): r is ResearchItem => !!r);
+  const pool = research.filter((r) => (!cfg.types?.length || cfg.types.includes(r.type ?? "")) && (!cfg.platforms?.length || cfg.platforms.includes(r.platform ?? "")));
+  const tokens = tokenize(`${prompt} ${cfg.focus ?? ""}`); const focus = (cfg.focus ?? "").toLowerCase().split(",").map((f) => f.trim()).filter(Boolean);
+  const n = Math.min(12, Math.max(1, cfg.count ?? 6));
+  return pool.map((r) => ({ r, s: scoreItem(r, tokens, focus) + perf(r) * 0.3 })).sort((a, b) => b.s - a.s).slice(0, n).map((x) => x.r);
+}
+const researchChars = (items: ResearchItem[]) => items.reduce((s, i) => s + 220 + Math.min(900, (i.summary ?? "").length) + (i.use_case ?? "").length, items.length ? 420 : 0);
+const ref = (i: ResearchItem) => ({ id: i.page_id, hook: i.hook, url: i.url, type: i.type, platform: i.platform, views: i.views });
+function listResearch(q: URLSearchParams) {
+  const types = q.get("types")?.split(",").filter(Boolean) ?? []; const plats = q.get("platforms")?.split(",").filter(Boolean) ?? [];
+  let list = research.filter((r) => (!types.length || types.includes(r.type ?? "")) && (!plats.length || plats.includes(r.platform ?? "")));
+  const tokens = tokenize(q.get("q") ?? "");
+  if (tokens.length) list = list.map((r) => ({ r, s: scoreItem(r, tokens, []) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.r);
+  else { const sort = q.get("sort") ?? "views"; list = [...list].sort((a, b) => sort === "grade" ? (b.grade ?? 0) - (a.grade ?? 0) : sort === "newest" ? (b.posted ?? "").localeCompare(a.posted ?? "") : (b.views ?? 0) - (a.views ?? 0)); }
+  return list.slice(0, Number(q.get("limit") ?? 60));
+}
+const facet = (k: "type" | "platform") => Object.entries(research.reduce((acc, r) => { const v = r[k]; if (v) acc[v] = (acc[v] ?? 0) + 1; return acc; }, {} as Record<string, number>)).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+const researchStatus = () => ({ connected: true, items: research.length, last_sync: { at: researchSynced, total: research.length, updated: 0, removed: 0 } });
+
 // ---- Seeded generations --------------------------------------------------
 const SAMPLE_TEXT = `1. "Nobody tells you this about cold brew." — contrarian cold open
 2. "I made 300 cups wrong before this." — result-first confession
@@ -86,7 +125,7 @@ const SAMPLE_TEXT = `1. "Nobody tells you this about cold brew." — contrarian 
 type Gen = Generation & { user_email?: string; user_name?: string };
 const gens: Gen[] = [];
 const seedGen = (o: Partial<Gen> & { kind: Kind; prompt: string; user: User; hours: number; ar?: string; preset_id?: string | null; favorite?: number; fail?: string }) => {
-  const g: Gen = { id: id("gen"), user_id: o.user.id, kind: o.kind, model: o.model ?? (o.kind === "image" ? "google/gemini-2.5-flash-image" : o.kind === "video" ? "bytedance/seedance-2.0" : "anthropic/claude-sonnet-4.5"), prompt: o.prompt, params_json: JSON.stringify(o.kind === "video" ? { aspect_ratio: o.ar ?? "16:9", duration: 5, resolution: "720p", generate_audio: true, count: 1 } : o.kind === "image" ? { aspect_ratio: o.ar ?? "1:1", count: 1 } : { max_tokens: 900, temperature: 0.9, count: 1 }), input_keys_json: "[]", preset_id: o.preset_id ?? null, status: o.fail ? "failed" : "done", provider_job_id: null, estimate_credits: o.kind === "video" ? 46 : o.kind === "image" ? 5 : 2, actual_credits: o.fail ? null : o.kind === "video" ? 44 : o.kind === "image" ? 4 : 1, cost_usd: o.fail ? null : o.kind === "video" ? 0.38 : o.kind === "image" ? 0.039 : 0.006, outputs_json: "[]", text_output: o.kind === "text" && !o.fail ? SAMPLE_TEXT : null, error: o.fail ?? null, favorite: o.favorite ?? 0, created_at: ago(o.hours), completed_at: ago(o.hours), user_email: o.user.email, user_name: o.user.name ?? undefined };
+  const g: Gen = { id: id("gen"), user_id: o.user.id, kind: o.kind, model: o.model ?? (o.kind === "image" ? "google/gemini-2.5-flash-image" : o.kind === "video" ? "bytedance/seedance-2.0" : "anthropic/claude-sonnet-4.5"), prompt: o.prompt, params_json: JSON.stringify(o.kind === "video" ? { aspect_ratio: o.ar ?? "16:9", duration: 5, resolution: "720p", generate_audio: true, count: 1 } : o.kind === "image" ? { aspect_ratio: o.ar ?? "1:1", count: 1 } : { max_tokens: 900, temperature: 0.9, count: 1 }), input_keys_json: "[]", preset_id: o.preset_id ?? null, status: o.fail ? "failed" : "done", provider_job_id: null, estimate_credits: o.kind === "video" ? 400 : o.kind === "image" ? 39 : 26, actual_credits: o.fail ? null : o.kind === "video" ? 380 : o.kind === "image" ? 39 : 6, cost_usd: o.fail ? null : o.kind === "video" ? 0.38 : o.kind === "image" ? 0.039 : 0.006, outputs_json: "[]", text_output: o.kind === "text" && !o.fail ? SAMPLE_TEXT : null, error: o.fail ?? null, favorite: o.favorite ?? 0, created_at: ago(o.hours), completed_at: ago(o.hours), user_email: o.user.email, user_name: o.user.name ?? undefined };
   if (o.kind !== "text" && !o.fail) { const key = putFile(`outputs/${g.id}/0.jpg`, render(o.prompt, o.ar ?? (o.kind === "video" ? "16:9" : "1:1"), seq, o.kind === "video" ? "demo video frame" : "demo render")); g.outputs_json = JSON.stringify([{ key, mime: "image/jpeg" }]); }
   gens.push(g); return g;
 };
@@ -106,6 +145,7 @@ seedGen({ kind: "video", prompt: "Handheld POV walking into a bright warehouse s
 seedGen({ kind: "video", prompt: "Macro of cold brew dripping into a glass, backlit, 120fps feel", user: users[1], hours: 50, ar: "1:1", model: "google/veo-3.1" });
 seedGen({ kind: "text", prompt: "Write 10 opening hooks for a 30 second TikTok video about: cold brew at home. Audience: small business owners.", user: users[1], hours: 4, preset_id: "pre_seed_hooks" });
 seedGen({ kind: "text", prompt: "Write 10 opening hooks for a 30 second Instagram Reels video about: our new studio space.", user: users[0], hours: 28 });
+for (const g of gens.filter((x) => x.kind === "text")) { const used = selectResearch(g.prompt, { mode: "auto", count: 4 }); g.params_json = JSON.stringify({ ...JSON.parse(g.params_json), research: { mode: "pick", ids: used.map((i) => i.page_id), origin: "auto", count: 4 }, research_used: used.map(ref) }); }
 seedGen({ kind: "image", prompt: "Product shot with impossible reflections", user: users[2], hours: 9, fail: "Model returned no image (content was flagged by the provider)" });
 
 // ---- Seeded analyses -----------------------------------------------------
@@ -117,7 +157,7 @@ const mkAnalysis = (src: string, note: string, hours: number, batch: string | nu
   summary: status === "done" ? "A creator debunks common cold brew advice in a fast talking-head format with cutaway inserts. The hook is a contrarian claim delivered in the first second, followed by a credibility beat (300 failed cups), then three concrete, numbered tips. Pacing is tight: a cut every 2 to 3 seconds, on-screen text mirrors each tip, and the video ends with a save prompt rather than a follow ask. It works because every line is specific and the viewer gets a complete recipe without leaving." : null,
   visual: status === "done" ? "[00:00] Medium close-up, talking head, kitchen background, natural window light from the left. Bold white caption at chest height.\n[00:03] Jump cut, slightly tighter. Hand gesture for emphasis.\n[00:08] Cutaway: overhead shot of a mason jar, grounds being poured. Text overlay: 1:8.\n[00:14] Cutaway: grinder close-up, coarse grounds in palm. Text overlay: COARSE · 12H.\n[00:21] Timelapse of the jar darkening on a counter. Text overlay: HOUR 9.\n[00:27] Back to talking head, pointing down at the caption. End card with a Save icon." : null,
   extras_json: JSON.stringify(status === "done" ? { on_screen_text: "nobody tells you this · 1:8 · COARSE · 12H · HOUR 9 · SAVE THIS", hook: "Contrarian claim in the first second (\"nobody tells you this\") plus an immediate credibility beat (\"300 cups wrong\"). The viewer wants to know what everyone gets wrong.", format: "talking head with cutaways", key_moments: ["[00:00] contrarian hook", "[00:08] the ratio reveal", "[00:21] timelapse payoff", "[00:27] save prompt"], caption_ideas: ["The cold brew ratio every blog gets wrong. Save this.", "300 bad cups so you don't have to. 1:8, coarse, 12 hours.", "Hour nine is when the magic happens ☕"], hashtags: ["coldbrew", "coffeetok", "homebarista", "coffeerecipe", "morningroutine"], note_response: "The hook works because it is contrarian and specific at the same time. The credibility beat right after it is what keeps people past second three.", duration_seconds: 31 } : {}),
-  estimate_credits: 2, actual_credits: status === "done" ? 2 : null, cost_usd: status === "done" ? 0.012 : null, error: status === "failed" ? "This link can't be fetched directly. Upload the file or connect the NAS analyzer bridge." : null, created_at: ago(hours), completed_at: status === "done" ? ago(hours) : null,
+  estimate_credits: 14, actual_credits: status === "done" ? 12 : null, cost_usd: status === "done" ? 0.012 : null, error: status === "failed" ? "This link can't be fetched directly. Upload the file or connect the NAS analyzer bridge." : null, created_at: ago(hours), completed_at: status === "done" ? ago(hours) : null,
 });
 analyses.push(mkAnalysis("https://www.tiktok.com/@homebarista/video/7421", "Why does this hook work?", 5, null));
 analyses.push(mkAnalysis("https://youtu.be/dQw4w9WgXcQ", "Pull the editing rhythm", 9, null));
@@ -125,19 +165,29 @@ analyses.push(mkAnalysis("https://www.tiktok.com/@competitor/video/1", "hooks", 
 analyses.push(mkAnalysis("https://www.tiktok.com/@competitor/video/2", "hooks", 20, "bat_demo1"));
 analyses.push(mkAnalysis("https://www.instagram.com/reel/abc", "hooks", 20, "bat_demo1", "failed"));
 
+// Keep each person's "spent" equal to the itemised charges above.
+for (const u of users) u.credits_used = gens.filter((g) => g.user_id === u.id).reduce((s, g) => s + (g.status === "failed" ? 0 : g.actual_credits ?? g.estimate_credits), 0) + analyses.filter((x) => x.user_id === u.id).reduce((s, x) => s + (x.status === "failed" ? 0 : x.actual_credits ?? x.estimate_credits), 0);
+
 const ledger: { id: string; user_id: string; delta: number; reason: string; ref_type: string; ref_id: string; created_at: string; email?: string }[] = [];
 for (const g of gens) { ledger.push({ id: id("led"), user_id: g.user_id, delta: g.estimate_credits, reason: "reserve", ref_type: "generation", ref_id: g.id, created_at: g.created_at, email: g.user_email }); if (g.status === "done" && g.actual_credits !== null) ledger.push({ id: id("led"), user_id: g.user_id, delta: g.actual_credits - g.estimate_credits, reason: "settle", ref_type: "generation", ref_id: g.id, created_at: g.created_at, email: g.user_email }); else if (g.status === "failed") ledger.push({ id: id("led"), user_id: g.user_id, delta: -g.estimate_credits, reason: "refund", ref_type: "generation", ref_id: g.id, created_at: g.created_at, email: g.user_email }); }
 
 // ---- Estimation (mirrors the worker) -------------------------------------
-const CREDIT_USD = 0.01, MARKUP = 1.15;
+const CREDIT_USD = 0.001, MARKUP = 1;
 const credits = (usd: number) => Math.max(1, Math.ceil((usd * MARKUP) / CREDIT_USD));
+
 function estimate(b: { kind: Kind; model: string; prompt?: string; params?: Record<string, unknown>; count?: number; reference_keys?: string[] }) {
   const m = models.find((x) => x.id === b.model && x.kind === b.kind) ?? models[0];
   const n = Math.max(1, Number(b.count ?? 1)); const p = b.params ?? {}; let usd = 0; const breakdown: string[] = [];
   if (b.kind === "image") { const per = m.pricing.per_image ?? 0.05; const mult = p.resolution === "4K" ? 2 : p.resolution === "2K" ? 1.5 : 1; usd = per * mult * n; breakdown.push(`${n} image${n > 1 ? "s" : ""} × $${(per * mult).toFixed(3)}`); }
   else if (b.kind === "video") { const per = m.pricing.per_second ?? 0.2; const s = Number(p.duration ?? 5); const mult = p.resolution === "1080p" ? 1.5 : p.resolution === "480p" ? 0.7 : 1; usd = per * s * mult * n; breakdown.push(`${s}s × $${per.toFixed(3)}/s${mult !== 1 ? ` × ${mult} (${p.resolution})` : ""}`); }
-  else { const inTok = Math.ceil((b.prompt ?? "").length / 3.6) + 128; const out = Number(p.max_tokens ?? 1500); usd = (inTok * (m.pricing.prompt ?? 1e-6) + out * (m.pricing.completion ?? 5e-6)) * n; breakdown.push(`≈${inTok} in + up to ${out} out tokens`); }
-  return { credits: credits(usd), usd, breakdown };
+  else {
+    const picked = b.kind === "text" ? selectResearch(b.prompt ?? "", p.research as ResearchConfig | undefined) : [];
+    const extra = Math.ceil(researchChars(picked) / 3.6);
+    const inTok = Math.ceil((b.prompt ?? "").length / 3.6) + 128 + extra; const out = Number(p.max_tokens ?? 1500); usd = (inTok * (m.pricing.prompt ?? 1e-6) + out * (m.pricing.completion ?? 5e-6)) * n;
+    breakdown.push(`≈${inTok.toLocaleString()} in + up to ${out.toLocaleString()} out tokens`); if (extra) breakdown.push(`includes ≈${extra.toLocaleString()} tokens of Social Research context`);
+    const c = credits(usd); return { credits: c, usd: c * CREDIT_USD, breakdown, warning: "Copy is billed by the tokens actually used, so the final charge is usually lower than this.", research: picked.map(ref) };
+  }
+  const c = credits(usd); return { credits: c, usd: c * CREDIT_USD, breakdown, warning: "Final charge uses the provider's reported cost." };
 }
 
 // ---- Job simulation ------------------------------------------------------
@@ -150,10 +200,23 @@ function simulate(g: Gen) {
     if (g.kind !== "text") for (let i = 0; i < count; i++) outs.push({ key: putFile(`outputs/${g.id}/${i}.jpg`, render(g.prompt, String(params.aspect_ratio ?? (g.kind === "video" ? "16:9" : "1:1")), seq + i, g.kind === "video" ? "demo video frame" : "demo render")), mime: "image/jpeg" });
     g.outputs_json = JSON.stringify(outs);
     if (g.kind === "text") g.text_output = `Demo output for: "${g.prompt.slice(0, 80)}"\n\n${SAMPLE_TEXT}`;
-    g.status = "done"; g.completed_at = now(); g.actual_credits = Math.max(1, g.estimate_credits - 1); g.cost_usd = (g.actual_credits / 1.15) * CREDIT_USD;
-    const u = users.find((x) => x.id === g.user_id)!; u.credits_used -= 1;
-    ledger.unshift({ id: id("led"), user_id: g.user_id, delta: -1, reason: "settle", ref_type: "generation", ref_id: g.id, created_at: now(), email: u.email });
+    g.status = "done"; g.completed_at = now(); g.actual_credits = Math.max(1, Math.round(g.estimate_credits * (g.kind === "text" ? 0.4 : 0.92))); g.cost_usd = g.actual_credits * CREDIT_USD;
+    const u = users.find((x) => x.id === g.user_id)!; const delta = g.actual_credits - g.estimate_credits; u.credits_used += delta;
+    ledger.unshift({ id: id("led"), user_id: g.user_id, delta, reason: "settle", ref_type: "generation", ref_id: g.id, created_at: now(), email: u.email });
   }, g.kind === "video" ? 9000 : g.kind === "image" ? 4000 : 2500);
+}
+
+function spending() {
+  const d = (c: number) => Math.round(c * CREDIT_USD * 1e6) / 1e6;
+  const charge = (st: string, e: number, a: number | null) => (st === "failed" ? 0 : st === "done" ? (a ?? e) : e);
+  const rows: SpendRow[] = [
+    ...gens.filter((g) => g.user_id === me.id).map((g) => ({ id: g.id, type: "generation" as const, kind: g.kind, label: g.prompt.slice(0, 120), model: g.model, status: g.status, charged: d(charge(g.status, g.estimate_credits, g.actual_credits)), estimate: d(g.estimate_credits), final: g.status === "done", created_at: g.created_at })),
+    ...analyses.filter((a) => a.user_id === me.id).map((a) => ({ id: a.id, type: "analysis" as const, kind: "analysis", label: a.filename || a.source_url || "video", model: a.model, status: a.status, charged: d(charge(a.status, a.estimate_credits, a.actual_credits)), estimate: d(a.estimate_credits), final: a.status === "done", created_at: a.created_at })),
+  ].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const day = now().slice(0, 10); const week = ago(24 * 7);
+  const sum = (f: (r: SpendRow) => boolean) => Math.round(rows.filter(f).reduce((s, r) => s + r.charged, 0) * 1e6) / 1e6;
+  const by_kind: Record<string, number> = {}; for (const r of rows) by_kind[r.kind] = Math.round(((by_kind[r.kind] ?? 0) + r.charged) * 1e6) / 1e6;
+  return { budget: d(me.credit_limit), spent: d(me.credits_used), remaining: d(Math.max(0, me.credit_limit - me.credits_used)), period_start: me.period_start, reset: me.period_reset, today: sum((r) => r.created_at.startsWith(day)), week: sum((r) => r.created_at >= week), pending: sum((r) => r.status === "queued" || r.status === "running"), by_kind, rows };
 }
 
 // ---- Router ----------------------------------------------------------------
@@ -170,16 +233,23 @@ async function route(method: string, url: URL, init?: RequestInit): Promise<Res>
   if (p === "/api/auth/request" || p === "/api/auth/login" || p === "/api/auth/google") { loggedIn = true; return json({ ok: true, demo: true, message: "Demo mode: you're signed in as Cameron.", must_set_password: false }); }
   if (p === "/api/auth/logout") { loggedIn = false; return json({ ok: true }); }
   if (!loggedIn) return err(401, "Sign in required");
-  if (p === "/api/auth/me") { if (method === "PATCH") { me.name = (await body()).name || me.name; return json({ ok: true }); } return json({ user: pub(me), remaining: Math.max(0, me.credit_limit - me.credits_used), config: { app_name: "Creative Creators Studio (demo)", credit_usd: CREDIT_USD, markup: MARKUP, nas_bridge: true, openrouter: true, email: true, google: true } }); }
+  if (p === "/api/auth/me") { if (method === "PATCH") { me.name = (await body()).name || me.name; return json({ ok: true }); } return json({ user: pub(me), remaining: Math.max(0, me.credit_limit - me.credits_used), config: { app_name: "Creative Creators Studio (demo)", credit_usd: CREDIT_USD, markup: MARKUP, nas_bridge: true, openrouter: true, email: true, google: true, research: true, confirm_over_usd: 0.5 } }); }
   if (p === "/api/auth/password") return json({ ok: true });
+  if (p === "/api/auth/spending") return json(spending());
+  if (p === "/api/research" || p === "/api/research/status") return json(p.endsWith("status") ? researchStatus() : { items: listResearch(q).map(({ body: _b, ...r }) => r), facets: { types: facet("type"), platforms: facet("platform") }, status: researchStatus() });
+  if (p === "/api/research/sync") { researchSynced = now(); return json({ ok: true, ...researchStatus().last_sync }); }
+  if (p.startsWith("/api/research/")) { const r = research.find((x) => x.page_id === p.slice(14)); return r ? json({ item: r }) : err(404, "Not found"); }
   if (p === "/api/auth/ledger") return json({ entries: ledger.filter((l) => l.user_id === me.id).slice(0, 100) });
   if (p === "/api/models") { const k = q.get("kind"); return json({ models: k ? models.filter((m) => m.kind === k) : models }); }
   if (p === "/api/models/estimate") return json(estimate(await body()));
-  if (p === "/api/models/estimate-analysis") { const b = await body(); const n = Math.max(1, b.count ?? 1); return json({ credits: 2 * n, usd: 0.0118 * n, breakdown: ["≈60s of video (18,600 tokens in, 2,500 out)"], warning: "Duration unknown; assuming 60s until processed." }); }
+  if (p === "/api/models/estimate-analysis") { const b = await body(); const n = Math.max(1, b.count ?? 1); return json({ credits: 14 * n, usd: 0.014 * n, breakdown: ["≈60s of video (18,600 tokens in, 2,500 out)"], warning: "Duration unknown; assuming 60s until processed." }); }
   if (p === "/api/upload") { const fd = init?.body as FormData; const f = fd.get("file") as File; const dataUrl = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); }); const key = putFile(`uploads/${me.id}/${id("up")}.${(f.name.split(".").pop() || "png")}`, f.type.startsWith("image/") ? dataUrl : render(f.name, "16:9", seq, "uploaded video")); return json({ key, url: key, filename: f.name, size: f.size, mime: f.type }); }
   if (p === "/api/generate" && method === "POST") {
     const b = await body(); const est = estimate(b); const remaining = me.credit_limit - me.credits_used;
-    if (est.credits > remaining) return { status: 402, body: { error: `Not enough credits: this needs ${est.credits}, you have ${remaining} left this period.` } };
+    if (est.credits > remaining) return { status: 402, body: { error: `Not enough budget left: this run costs about $${(est.credits * CREDIT_USD).toFixed(2)} and you have $${(remaining * CREDIT_USD).toFixed(2)} left this month.` } };
+    const rc = b.params?.research as ResearchConfig | undefined;
+    if (b.kind === "text" && rc && rc.mode && rc.mode !== "off") { const items = selectResearch(b.prompt, rc); b.params = { ...b.params, research: { ...rc, mode: "pick", ids: items.map((i) => i.page_id), origin: rc.mode }, research_used: items.map(ref) }; }
+    else if (b.params) delete b.params.research;
     me.credits_used += est.credits;
     const g: Gen = { id: id("gen"), user_id: me.id, kind: b.kind, model: b.model, prompt: b.prompt, params_json: JSON.stringify({ ...(b.params ?? {}), count: b.count ?? 1, ...(b.negative ? { negative: b.negative } : {}) }), input_keys_json: JSON.stringify(b.reference_keys ?? []), preset_id: b.preset_id ?? null, status: "queued", provider_job_id: null, estimate_credits: est.credits, actual_credits: null, cost_usd: null, outputs_json: "[]", text_output: null, error: null, favorite: 0, created_at: now(), completed_at: null, user_email: me.email, user_name: me.name ?? undefined };
     gens.unshift(g); ledger.unshift({ id: id("led"), user_id: me.id, delta: est.credits, reason: "reserve", ref_type: "generation", ref_id: g.id, created_at: now(), email: me.email });
@@ -212,13 +282,13 @@ async function route(method: string, url: URL, init?: RequestInit): Promise<Res>
     if (method === "DELETE") { presets.splice(presets.indexOf(pr), 1); return json({ ok: true }); }
     return json({ preset: pr });
   }
-  if (p === "/api/analyses" && method === "POST") { const b = await body(); me.credits_used += 2; const a = mkAnalysis(b.source_url ?? b.filename ?? "upload", b.note ?? "", 0, null, "queued"); a.filename = b.filename ?? null; a.user_id = me.id; analyses.unshift(a); setTimeout(() => { a.status = "running"; }, 800); setTimeout(() => { Object.assign(a, mkAnalysis(a.source_url!, a.note ?? "", 0, null, "done"), { id: a.id, filename: a.filename }); }, 5000); return json({ analysis: a }, 201); }
-  if (p === "/api/analyses/batch") { const fd = init?.body; let n = 3; let name = "Batch"; if (fd instanceof FormData) { name = String(fd.get("name") || "CSV batch"); n = Math.max(1, (String(await (fd.get("file") as File).text()).trim().split("\n").length - 1)); } else { const b = await body(); name = b.name ?? name; n = (b.rows ?? []).length; } const bid = id("bat"); batches.unshift({ id: bid, user_id: me.id, name, total: n, created_at: now() }); for (let i = 0; i < n; i++) { const a = mkAnalysis(`https://www.tiktok.com/@brand/video/${1000 + i}`, "", 0, bid, "queued"); a.user_id = me.id; analyses.unshift(a); setTimeout(() => { Object.assign(a, mkAnalysis(a.source_url!, "", 0, bid, "done"), { id: a.id }); }, 3000 + i * 1500); } me.credits_used += 2 * n; return json({ batch_id: bid, created: n, errors: [] }, 201); }
+  if (p === "/api/analyses" && method === "POST") { const b = await body(); me.credits_used += 14; const a = mkAnalysis(b.source_url ?? b.filename ?? "upload", b.note ?? "", 0, null, "queued"); a.filename = b.filename ?? null; a.user_id = me.id; analyses.unshift(a); setTimeout(() => { a.status = "running"; }, 800); setTimeout(() => { Object.assign(a, mkAnalysis(a.source_url!, a.note ?? "", 0, null, "done"), { id: a.id, filename: a.filename }); }, 5000); return json({ analysis: a }, 201); }
+  if (p === "/api/analyses/batch") { const fd = init?.body; let n = 3; let name = "Batch"; if (fd instanceof FormData) { name = String(fd.get("name") || "CSV batch"); n = Math.max(1, (String(await (fd.get("file") as File).text()).trim().split("\n").length - 1)); } else { const b = await body(); name = b.name ?? name; n = (b.rows ?? []).length; } const bid = id("bat"); batches.unshift({ id: bid, user_id: me.id, name, total: n, created_at: now() }); for (let i = 0; i < n; i++) { const a = mkAnalysis(`https://www.tiktok.com/@brand/video/${1000 + i}`, "", 0, bid, "queued"); a.user_id = me.id; analyses.unshift(a); setTimeout(() => { Object.assign(a, mkAnalysis(a.source_url!, "", 0, bid, "done"), { id: a.id }); }, 3000 + i * 1500); } me.credits_used += 14 * n; return json({ batch_id: bid, created: n, errors: [] }, 201); }
   if (p === "/api/analyses") { const b = q.get("batch_id"); return json({ analyses: b ? analyses.filter((a) => a.batch_id === b) : analyses.filter((a) => !a.batch_id) }); }
   if (p === "/api/analyses/batches") return json({ batches: batches.map((b) => ({ ...b, done: analyses.filter((a) => a.batch_id === b.id && a.status === "done").length, failed: analyses.filter((a) => a.batch_id === b.id && a.status === "failed").length })) });
   if ((m = /^\/api\/analyses\/batches\/([^/]+)\/export\.csv$/.exec(p))) { const rows = analyses.filter((a) => a.batch_id === m![1]); const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`; return { status: 200, type: "text/csv", text: ["id,status,source,note,summary,transcript,visual_description", ...rows.map((a) => [a.id, a.status, a.source_url, a.note, a.summary, a.transcript, a.visual].map(esc).join(","))].join("\n") }; }
   if ((m = /^\/api\/analyses\/([^/]+)(?:\/(retry))?$/.exec(p))) { const a = analyses.find((x) => x.id === m![1]); if (!a) return err(404, "Not found"); if (m[2] === "retry") { a.status = "queued"; a.error = null; setTimeout(() => { Object.assign(a, mkAnalysis(a.source_url!, a.note ?? "", 0, a.batch_id, "done"), { id: a.id }); }, 4000); return json({ ok: true }); } if (method === "DELETE") { analyses.splice(analyses.indexOf(a), 1); return json({ ok: true }); } return json({ analysis: a }); }
-  if (p === "/api/admin/users") { if (method === "POST") { const b = await body(); const u: User = { id: id("usr"), email: b.email, name: b.name || null, role: b.role === "admin" ? "admin" : "member", status: "active", credit_limit: Number(b.credit_limit ?? 2000), credits_used: 0, period_start: "2026-10-01", period_reset: "monthly", created_at: now(), last_seen_at: null, has_password: !!b.password, must_set_password: b.password ? 1 : 0 }; users.push(u); return json({ user: u, invited: !b.password }, 201); } return json({ users: users.map((u) => ({ ...u, generations: gens.filter((g) => g.user_id === u.id).length, analyses: analyses.filter((a) => a.user_id === u.id).length, period_usd: gens.filter((g) => g.user_id === u.id).reduce((s, g) => s + (g.cost_usd ?? 0), 0) })) }); }
+  if (p === "/api/admin/users") { if (method === "POST") { const b = await body(); const u: User = { id: id("usr"), email: b.email, name: b.name || null, role: b.role === "admin" ? "admin" : "member", status: "active", credit_limit: Number(b.credit_limit ?? 25000), credits_used: 0, period_start: "2026-10-01", period_reset: "monthly", created_at: now(), last_seen_at: null, has_password: !!b.password, must_set_password: b.password ? 1 : 0 }; users.push(u); return json({ user: u, invited: !b.password }, 201); } return json({ users: users.map((u) => ({ ...u, generations: gens.filter((g) => g.user_id === u.id).length, analyses: analyses.filter((a) => a.user_id === u.id).length, period_usd: gens.filter((g) => g.user_id === u.id).reduce((s, g) => s + (g.cost_usd ?? 0), 0) })) }); }
   if ((m = /^\/api\/admin\/users\/([^/]+)(?:\/(reset|adjust|invite|password))?$/.exec(p))) { const u = users.find((x) => x.id === m![1]); if (!u) return err(404, "User not found"); if (m[2] === "reset") { u.credits_used = 0; return json({ ok: true }); } if (m[2] === "adjust") { u.credits_used = Math.max(0, u.credits_used + Number((await body()).delta)); return json({ ok: true }); } if (m[2] === "invite") return json({ ok: true, sent: true }); if (m[2] === "password") { u.has_password = true; u.must_set_password = 1; return json({ ok: true }); } if (method === "PATCH") { const b = await body(); Object.assign(u, { name: b.name ?? u.name, credit_limit: b.credit_limit ?? u.credit_limit, role: b.role ?? u.role, status: b.status ?? u.status, period_reset: b.period_reset ?? u.period_reset }); return json({ user: u }); } if (method === "DELETE") { users.splice(users.indexOf(u), 1); return json({ ok: true }); } return json({ user: u }); }
   if (p === "/api/admin/usage") return json({ byUser: users.map((u) => ({ id: u.id, email: u.email, name: u.name, credit_limit: u.credit_limit, credits_used: u.credits_used, period_start: u.period_start, period_credits: u.credits_used })), byModel: Object.values(gens.filter((g) => g.status === "done").reduce((acc, g) => { const k = g.model + g.kind; acc[k] = acc[k] ?? { model: g.model, kind: g.kind, runs: 0, credits: 0, usd: 0 }; acc[k].runs++; acc[k].credits += g.actual_credits ?? 0; acc[k].usd += g.cost_usd ?? 0; return acc; }, {} as Record<string, { model: string; kind: string; runs: number; credits: number; usd: number }>)), recent: ledger.slice(0, 60), totals: { month_usd: gens.reduce((s, g) => s + (g.cost_usd ?? 0), 0) + analyses.reduce((s, a) => s + (a.cost_usd ?? 0), 0), month_generations: gens.length, month_analyses: analyses.length, in_flight: gens.filter((g) => g.status === "queued" || g.status === "running").length } });
   if (p === "/api/admin/models") return json({ models });

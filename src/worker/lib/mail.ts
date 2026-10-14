@@ -27,13 +27,14 @@ export function magicLinkEmail(appName: string, link: string, minutes: number): 
   return { html, text };
 }
 
-export function inviteEmail(appName: string, link: string, inviter: string, credits: number): { html: string; text: string } {
-  const text = `${inviter} invited you to ${appName}.\n\nYou have ${credits} credits per month. Sign in here:\n${link}`;
+export function inviteEmail(appName: string, link: string, inviter: string, budgetUsd: number): { html: string; text: string } {
+  const budget = `$${budgetUsd.toFixed(2)}`;
+  const text = `${inviter} invited you to ${appName}.\n\nYou have a ${budget} monthly budget for AI generations. Sign in here:\n${link}`;
   const html = `<!doctype html><html><body style="margin:0;background:#0d1b2b;font-family:-apple-system,Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#f1f2f4">
   <div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;background:linear-gradient(160deg,#1a5276,#0d1b2b);border:1px solid rgba(255,255,255,.08)">
     <div style="font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:#d9b435;font-weight:700">${appName}</div>
     <h1 style="font-size:26px;margin:14px 0 8px">You're in.</h1>
-    <p style="color:#aab6cc;line-height:1.5">${inviter} invited you to the team studio. You have <b style="color:#fff">${credits} credits</b> per month to generate images, video and copy.</p>
+    <p style="color:#aab6cc;line-height:1.5">${inviter} invited you to the team studio. You have a <b style="color:#fff">${budget} monthly budget</b> to generate images, video and copy. Every run shows its price before you start.</p>
     <a href="${link}" style="display:inline-block;margin-top:10px;padding:14px 22px;border-radius:999px;background:#d9b435;color:#1a1307;font-weight:700;text-decoration:none">Open the studio</a>
   </div></body></html>`;
   return { html, text };

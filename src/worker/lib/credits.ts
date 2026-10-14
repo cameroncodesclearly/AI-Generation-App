@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import type { User } from "../../shared/types";
 import { HttpError, id } from "./util";
+import { creditConfig } from "./catalog";
 
 function monthStart(d = new Date()): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
@@ -26,7 +27,9 @@ export async function reserve(env: Env, userId: string, credits: number, refType
   if (!res.meta.changes) {
     const u = await env.DB.prepare("SELECT credit_limit, credits_used, status FROM users WHERE id = ?1").bind(userId).first<{ credit_limit: number; credits_used: number; status: string }>();
     if (u?.status !== "active") throw new HttpError(403, "Your account is disabled");
-    throw new HttpError(402, `Not enough credits: this needs ${credits}, you have ${Math.max(0, (u?.credit_limit ?? 0) - (u?.credits_used ?? 0))} left this period.`, { needed: credits, remaining: Math.max(0, (u?.credit_limit ?? 0) - (u?.credits_used ?? 0)) });
+    const left = Math.max(0, (u?.credit_limit ?? 0) - (u?.credits_used ?? 0));
+    const per = creditConfig(env).usd;
+    throw new HttpError(402, `Not enough budget left: this run costs about $${(credits * per).toFixed(2)} and you have $${(left * per).toFixed(2)} left this month. Ask an admin for a top-up.`, { needed: credits, remaining: left });
   }
   await env.DB.prepare("INSERT INTO credit_ledger (id, user_id, delta, reason, ref_type, ref_id) VALUES (?1, ?2, ?3, 'reserve', ?4, ?5)")
     .bind(id("led"), userId, credits, refType, refId).run();

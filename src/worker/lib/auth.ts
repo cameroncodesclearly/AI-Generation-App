@@ -49,7 +49,7 @@ export async function getUserByEmail(env: Env, email: string): Promise<User | nu
 
 export async function createUser(env: Env, email: string, opts: { role?: "admin" | "member"; name?: string; credit_limit?: number } = {}): Promise<User> {
   const uid = id("usr");
-  const limit = opts.credit_limit ?? parseInt(env.DEFAULT_CREDIT_LIMIT || "2000", 10);
+  const limit = opts.credit_limit ?? parseInt(env.DEFAULT_CREDIT_LIMIT || "25000", 10);
   const role = opts.role ?? (adminEmails(env).includes(email.toLowerCase()) ? "admin" : "member");
   await env.DB.prepare("INSERT INTO users (id, email, name, role, credit_limit) VALUES (?1, ?2, ?3, ?4, ?5)")
     .bind(uid, email.toLowerCase(), opts.name ?? null, role, limit).run();
