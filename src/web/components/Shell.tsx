@@ -1,73 +1,65 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { ChevronsUpDown, Clapperboard, Film, Home, Image as ImageIcon, LayoutGrid, LibraryBig, LogOut, Plus, Settings2, Type, Users, Video } from "lucide-react";
+import { Clapperboard, FolderOpen, Search } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { fmtCredits } from "../lib/api";
+import SearchOverlay from "./SearchOverlay";
 
-const create = [
-  { to: "/create/image", label: "Image", icon: ImageIcon },
-  { to: "/create/video", label: "Video", icon: Video },
-  { to: "/create/text", label: "Copy & Ideas", icon: Type },
-  { to: "/analyze", label: "Analyze Video", icon: Film },
-];
-const library = [
-  { to: "/library", label: "My generations", icon: LibraryBig },
-  { to: "/library?scope=team", label: "Community", icon: Users },
-  { to: "/presets", label: "Presets", icon: LayoutGrid },
+const links = [
+  { to: "/", label: "Explore", end: true },
+  { to: "/create/image", label: "Image" },
+  { to: "/create/video", label: "Video" },
+  { to: "/create/text", label: "Copy" },
+  { to: "/analyze", label: "Analyze", badge: "New" },
+  { to: "/presets", label: "Presets" },
 ];
 
 export default function Shell() {
   const { me, logout } = useAuth();
-  const nav_ = useNavigate();
+  const nav = useNavigate();
+  const [search, setSearch] = useState(false);
+  const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearch((s) => !s); } };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, []);
   if (!me) return null;
-  const used = me.user.credits_used;
-  const pct = me.user.credit_limit ? Math.min(100, (used / me.user.credit_limit) * 100) : 0;
-  const item = ({ isActive }: { isActive: boolean }) => `nav-tile ${isActive ? "active" : ""}`;
+  const pct = me.user.credit_limit ? Math.min(100, (me.user.credits_used / me.user.credit_limit) * 100) : 0;
+  const initials = (me.user.name || me.user.email)[0]?.toUpperCase();
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen">
       <div className="sky" />
-      <aside className="sidebar sticky top-0 h-screen w-60 shrink-0 p-3">
-        <div className="panel flex h-full flex-col p-3">
-          <div className="mb-4 flex items-center gap-2">
-            <NavLink to="/" className="panel-row flex-1 !py-2">
-              <span className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-sky to-blush"><Clapperboard size={15} className="text-ink" /></span><span className="display text-[13px] leading-none">Creative<br />Creators</span></span>
-              <ChevronsUpDown size={14} className="opacity-50" />
-            </NavLink>
-          </div>
-          <nav className="flex flex-col gap-0.5">
-            <NavLink to="/" end className={item}><span className="nav-ico"><Home size={14} /></span> Home</NavLink>
-            {create.map((n) => <NavLink key={n.to} to={n.to} className={item}><span className="nav-ico"><n.icon size={14} /></span> {n.label}</NavLink>)}
-          </nav>
-          <div className="mt-4 mb-1 flex items-center justify-between px-2 text-[11px] muted"><span>Library</span></div>
-          <nav className="flex flex-col gap-0.5">
-            {library.map((n) => <NavLink key={n.to} to={n.to} className={item}><span className="nav-ico"><n.icon size={14} /></span> {n.label}</NavLink>)}
-            <NavLink to="/presets/new" className={item}><span className="nav-ico !bg-white/10"><Plus size={14} /></span> New preset</NavLink>
-            {me.user.role === "admin" && <NavLink to="/admin" className={item}><span className="nav-ico !bg-white/10"><Settings2 size={14} /></span> Admin</NavLink>}
-          </nav>
-          <div className="mt-auto">
-            <NavLink to="/account" className="panel-row block !flex-col !items-stretch gap-2">
-              <div className="flex items-center justify-between text-xs"><span className="muted">Credits</span><span className="font-semibold">{fmtCredits(me.remaining)} left</span></div>
-              <div className="meter"><div style={{ width: `${pct}%` }} /></div>
-              <div className="flex items-center justify-between text-[11px] muted"><span>{fmtCredits(used)} / {fmtCredits(me.user.credit_limit)}</span><span>≈ ${(me.remaining * me.config.credit_usd).toFixed(2)}</span></div>
-            </NavLink>
-            <div className="mt-2 flex items-center justify-between px-2 text-xs">
-              <NavLink to="/account" className="truncate muted hover:text-white">{me.user.name || me.user.email.split("@")[0]}</NavLink>
-              <button className="icon-btn" onClick={async () => { await logout(); nav_("/login"); }} title="Sign out"><LogOut size={13} /></button>
+      <header className="topnav">
+        <NavLink to="/" className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky to-blush" title="Creative Creators"><Clapperboard size={16} className="text-ink" /></NavLink>
+        <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-thin">
+          {links.map((l) => <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `topnav-link flex items-center gap-1.5 ${isActive ? "active" : ""}`}>{l.label}{l.badge && <span className="badge badge-new">{l.badge}</span>}</NavLink>)}
+        </nav>
+        <button className="icon-btn" title="Search (⌘K)" onClick={() => setSearch(true)}><Search size={15} /></button>
+        <NavLink to="/account" className="cchip !py-1.5" title={`${fmtCredits(me.user.credits_used)} of ${fmtCredits(me.user.credit_limit)} used`}>
+          <span className="meter !h-1.5 w-12"><div style={{ width: `${pct}%` }} /></span>
+          <span className="text-sun">✦ {fmtCredits(me.remaining)}</span>
+        </NavLink>
+        <NavLink to="/library" className={({ isActive }) => `cchip !py-1.5 ${isActive ? "!text-sun" : ""}`}><FolderOpen size={14} /> Assets</NavLink>
+        <div className="relative">
+          <button className="ml-1 grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-white/15 bg-white/10 text-xs font-bold" onClick={() => setMenu((m) => !m)}>{me.user.avatar_url ? <img src={me.user.avatar_url} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" /> : initials}</button>
+          {menu && (<>
+            <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
+            <div className="menu right-0 top-[calc(100%+8px)] w-56">
+              <div className="px-3 py-2"><div className="truncate text-sm font-semibold">{me.user.name || me.user.email.split("@")[0]}</div><div className="truncate text-xs muted">{me.user.email}</div></div>
+              <NavLink to="/account" className="menu-item" onClick={() => setMenu(false)}>Account & credits</NavLink>
+              <NavLink to="/library?favorite=1" className="menu-item" onClick={() => setMenu(false)}>Favourites</NavLink>
+              <NavLink to="/presets/new" className="menu-item" onClick={() => setMenu(false)}>New preset</NavLink>
+              {me.user.role === "admin" && <NavLink to="/admin" className="menu-item" onClick={() => setMenu(false)}>Admin</NavLink>}
+              <button className="menu-item btn-danger" onClick={async () => { await logout(); nav("/login"); }}>Sign out</button>
             </div>
-          </div>
+          </>)}
         </div>
-      </aside>
-      <main className="min-w-0 flex-1 p-3 md:p-4">
-        <div className="mb-3 flex items-center justify-between md:hidden">
-          <NavLink to="/" className="display text-xl">Creative Creators</NavLink>
-          <NavLink to="/account" className="chip">{fmtCredits(me.remaining)} cr</NavLink>
-        </div>
-        <div className="mb-3 flex gap-2 overflow-x-auto md:hidden">
-          {[{ to: "/", label: "Home" }, ...create, ...library].map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `chip ${isActive ? "chip-on" : ""}`}>{n.label}</NavLink>)}
-          {me.user.role === "admin" && <NavLink to="/admin" className={({ isActive }) => `chip ${isActive ? "chip-on" : ""}`}>Admin</NavLink>}
-        </div>
+      </header>
+      <main className="p-3 md:p-4">
         {!!me.user.must_set_password && <NavLink to="/account?setpw=1" className="panel mb-3 block border-sun/40 px-4 py-2 text-sm">You're using a temporary password. <b className="text-sun">Set your own →</b></NavLink>}
         <Outlet />
       </main>
+      <SearchOverlay open={search} onClose={() => setSearch(false)} />
     </div>
   );
 }

@@ -29,8 +29,9 @@ scripts      Brand-asset generator (OpenRouter)
   download a CSV of all results.
 - **Admin.** Team roster with usage meters and real spend, model allow-list with price overrides, usage by person and
   model, full credit ledger.
-- **Auth.** Email + password accounts (PBKDF2, lockout after repeated failures) plus magic links (15 min, single use)
-  for invites and password resets. Admins create accounts with either a temporary password they hand over directly
+- **Auth.** Google sign-in for the team (Workspace domain allow-list auto-provisions accounts), magic links via
+  Resend (15 min, single use) for invites and anyone without Google, and optional email + password accounts
+  (PBKDF2, lockout after repeated failures). Admins create accounts with either a temporary password they hand over directly
   or an emailed link; people set their own password under Account. 30-day sessions, admin bootstrap from
   `ADMIN_EMAILS`, invite-only for everyone else.
 
@@ -57,6 +58,12 @@ npx wrangler queues create studio-jobs
 # 3. Secrets
 npx wrangler secret put OPENROUTER_API_KEY
 npx wrangler secret put RESEND_API_KEY
+# Google sign-in (recommended for the team): Google Cloud Console → APIs & Services → Credentials →
+# OAuth client ID (Web application). Authorized redirect URI: https://<your-app>/api/auth/google/callback
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+#   and set GOOGLE_ALLOWED_DOMAINS in wrangler.jsonc (e.g. clearskycreations.com) so anyone on the
+#   Workspace domain gets an account automatically with DEFAULT_CREDIT_LIMIT; others must be invited.
 # optional NAS bridge (see nas-analyzer/README.md)
 npx wrangler secret put NAS_ANALYZER_URL
 npx wrangler secret put NAS_ANALYZER_TOKEN

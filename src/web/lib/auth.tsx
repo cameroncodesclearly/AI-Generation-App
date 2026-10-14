@@ -5,7 +5,7 @@ import type { User } from "../../shared/types";
 export interface MeResponse {
   user: User;
   remaining: number;
-  config: { app_name: string; credit_usd: number; markup: number; nas_bridge: boolean; openrouter: boolean; email: boolean };
+  config: { app_name: string; credit_usd: number; markup: number; nas_bridge: boolean; openrouter: boolean; email: boolean; google: boolean };
 }
 
 interface AuthCtx {

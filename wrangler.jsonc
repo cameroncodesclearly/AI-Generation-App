@@ -18,7 +18,8 @@
     "CREDIT_USD": "0.01",
     "CREDIT_MARKUP": "1.15",
     "DEFAULT_CREDIT_LIMIT": "2000",
-    "SESSION_DAYS": "30"
+    "SESSION_DAYS": "30",
+    "GOOGLE_ALLOWED_DOMAINS": "clearskycreations.com"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "studio-db", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "migrations" }

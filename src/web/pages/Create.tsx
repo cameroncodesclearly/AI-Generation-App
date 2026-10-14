@@ -1,191 +1,197 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Clock, Film, Image as ImageIcon, Layers, Monitor, Proportions, Save, Sparkles, Type, Volume2 } from "lucide-react";
-import type { Generation, Kind, ModelInfo, Preset, PresetVariable } from "../../shared/types";
-import { api, ApiError, fmtCredits, parseJson } from "../lib/api";
-import { useAuth } from "../lib/auth";
-import { usePoll } from "../lib/hooks";
-import { useEstimate } from "../components/generation";
-import { ChipMenu, FeedItem, FrameTile, MetaCard, ModelRow, StyleCard, type Gen } from "../components/workspace";
-import { Field, Spinner, useToast } from "../components/ui";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
+import { AtSign, BookOpen, Clock, History as HistoryIcon, LayoutGrid, List, Monitor, Plus, Proportions, Sparkles, Volume2, X } from "lucide-react";
+import type { Kind } from "../../shared/types";
+import { fileUrl, fmtCredits } from "../lib/api";
+import { useStudio } from "../components/useStudio";
+import { AssetsPicker, ChipMenu, FeedItem, FrameTile, Lightbox, MetaCard, ModelBadge, ModelRow, Stepper, StyleCard, VarChips, priceLabel, type Gen } from "../components/workspace";
+import { Modal, Spinner, StatusPill, useToast } from "../components/ui";
 import { PresetPickerModal, SavePresetModal } from "./Presets";
-
-const KIND_META: Record<Kind, { title: string; icon: typeof ImageIcon; placeholder: string }> = {
-  image: { title: "Image", icon: ImageIcon, placeholder: "Describe the frame: subject, lighting, lens, mood…" },
-  video: { title: "Video", icon: Film, placeholder: "Describe the shot like a director: subject, action, camera move, light, sound…" },
-  text: { title: "Copy & Ideas", icon: Type, placeholder: "Hooks, scripts, captions, concepts. Say platform, audience and tone…" },
-};
 
 export default function Create() {
   const { kind: kindParam } = useParams();
   const kind = (["image", "video", "text"].includes(kindParam ?? "") ? kindParam : "image") as Kind;
-  const [sp, setSp] = useSearchParams();
-  const nav = useNavigate();
-  const { me, refresh } = useAuth();
+  return kind === "image" ? <ImageStudio key="image" /> : <PanelStudio key={kind} kind={kind} />;
+}
+
+/** Searchable model chip for the bottom bar (popover list with Featured section). */
+function ModelChip({ s }: { s: ReturnType<typeof useStudio> }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const list = s.models.filter((x) => !q || `${x.name} ${x.id} ${x.description ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  const featured = list.filter((x) => x.featured); const rest = list.filter((x) => !x.featured);
+  return (
+    <div className="relative">
+      <button type="button" className="cchip" onClick={() => setOpen((o) => !o)}>{s.m && <ModelBadge id={s.m.id} />}{s.m?.name ?? "Model"} <span className="opacity-60">›</span></button>
+      {open && (<>
+        <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+        <div className="menu bottom-[calc(100%+8px)] left-0 w-[380px] p-2">
+          <input className="input mb-2 !py-2 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          <div className="max-h-[50vh] overflow-auto scrollbar-thin">
+            {featured.length > 0 && <div className="px-2 py-1 text-[11px] muted">✦ Featured models</div>}
+            {[...featured, ...rest].map((x, i) => (<>
+              {i === featured.length && featured.length > 0 && rest.length > 0 && <div key="h" className="px-2 py-1 text-[11px] muted">All models</div>}
+              <button key={x.id} type="button" className={`menu-item ${x.id === s.model ? "on" : ""}`} onClick={() => { s.setModel(x.id); setOpen(false); }}>
+                <span className="flex min-w-0 items-center gap-3"><ModelBadge id={x.id} /><span className="min-w-0"><span className="flex items-center gap-2 font-semibold text-white">{x.name}{x.featured && <span className="badge">Top</span>}</span><span className="block truncate text-xs muted">{x.description || priceLabel(x)}</span></span></span>
+                <span className="shrink-0 text-[11px] muted">{priceLabel(x).split(" /")[0]}</span>
+              </button>
+            </>))}
+          </div>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Image: full-bleed results grid + bottom prompt bar
+// ---------------------------------------------------------------------------
+function ImageStudio() {
   const [toast, say] = useToast();
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  const [model, setModel] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [negative, setNegative] = useState("");
-  const [params, setParams] = useState<Record<string, unknown>>({});
-  const [frames, setFrames] = useState<(string | null)[]>([null, null, null, null]);
-  const [count, setCount] = useState(1);
-  const [busy, setBusy] = useState(false);
-  const [preset, setPreset] = useState<Preset | null>(null);
-  const [vars, setVars] = useState<Record<string, string>>({});
+  const s = useStudio("image", say);
+  const [pick, setPick] = useState(false);
   const [pickPreset, setPickPreset] = useState(false);
   const [savePreset, setSavePreset] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [scope, setScope] = useState<"mine" | "team">("mine");
-
-  // Load models per kind, seed from query params
-  useEffect(() => {
-    setModel(""); setParams({}); setFrames([null, null, null, null]); setCount(1); setPreset(null); setVars({});
-    api.get<{ models: ModelInfo[] }>(`/api/models?kind=${kind}`).then((r) => { setModels(r.models); setModel(sp.get("model") ?? r.models[0]?.id ?? ""); }).catch((e) => say(e.message, "error"));
-    const p = sp.get("prompt"); if (p) setPrompt(p);
-    const pid = sp.get("preset");
-    if (pid) api.get<{ preset: Preset }>(`/api/presets/${pid}`).then((r) => applyPreset(r.preset)).catch(() => say("Preset not found", "error"));
-    if (p || pid) setSp({}, { replace: true });
-  }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const m = useMemo(() => models.find((x) => x.id === model), [models, model]);
-  useEffect(() => {
-    if (!m) return;
-    setParams((prev) => {
-      const next: Record<string, unknown> = { ...prev };
-      if (m.options?.aspect_ratios?.length && !m.options.aspect_ratios.includes(String(prev.aspect_ratio))) next.aspect_ratio = m.options.aspect_ratios[0];
-      if (m.options?.resolutions?.length && !m.options.resolutions.includes(String(prev.resolution))) next.resolution = m.options.resolutions[0];
-      if (m.options?.durations?.length && !m.options.durations.includes(Number(prev.duration))) next.duration = m.options.durations[0];
-      if (kind === "video" && m.options?.supports_audio && prev.generate_audio === undefined) next.generate_audio = true;
-      if (kind === "text") { next.max_tokens = prev.max_tokens ?? 1500; next.temperature = prev.temperature ?? 0.8; }
-      return next;
-    });
-  }, [m?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function applyPreset(p: Preset) {
-    if (p.kind !== kind) { nav(`/create/${p.kind}?preset=${p.id}`); return; }
-    setPreset(p); setModel(p.model); setNegative(p.negative ?? "");
-    const pp = parseJson<Record<string, unknown>>(p.params_json, {});
-    setParams((prev) => ({ ...prev, ...pp }));
-    const defs = parseJson<PresetVariable[]>(p.variables_json, []);
-    setVars(Object.fromEntries(defs.map((d) => [d.key, d.default ?? ""])));
-    setPrompt("");
-  }
-
-  const defs = preset ? parseJson<PresetVariable[]>(preset.variables_json, []) : [];
-  const renderedPrompt = preset ? preset.template.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (_, k) => vars[k] ?? "") + (prompt.trim() ? `\n\n${prompt.trim()}` : "") : prompt;
-  const refKeys = frames.filter((f): f is string => !!f);
-  const presetRefs = preset ? parseJson<string[]>(preset.reference_keys_json, []) : [];
-  const est = useEstimate(model ? { kind, model, prompt: renderedPrompt, params: { ...params, negative }, reference_keys: [...presetRefs, ...refKeys], count } : null);
-  const missing = defs.filter((d) => d.required && !String(vars[d.key] ?? "").trim()).map((d) => d.label);
-
-  const feed = usePoll(() => api.get<{ generations: Gen[] }>(`/api/generations?kind=${kind}&scope=${scope}&limit=30`), 4000, true, [kind, scope]);
-  const items = feed.data?.generations ?? [];
-  const hasPending = items.some((g) => g.status === "queued" || g.status === "running");
-  useEffect(() => { if (!hasPending) void refresh(); }, [hasPending]); // eslint-disable-line react-hooks/exhaustive-deps
-  const current = items.find((g) => g.id === selected) ?? items[0] ?? null;
-
-  const run = async () => {
-    if (!renderedPrompt.trim() || !model) return;
-    if (missing.length) { say(`Fill in: ${missing.join(", ")}`, "error"); return; }
-    setBusy(true);
-    try {
-      const body = { kind, model, prompt: renderedPrompt, negative: negative || undefined, params, reference_keys: [...presetRefs, ...refKeys], count, preset_id: preset?.id };
-      const r = await api.post<{ generation: Generation }>("/api/generate", body);
-      setSelected(r.generation.id); await feed.reload(); await refresh();
-    } catch (e) { say(e instanceof ApiError ? e.message : String(e), "error"); } finally { setBusy(false); }
-  };
-
-  const set = (k: string, v: unknown) => setParams((p) => ({ ...p, [k]: v }));
-  const K = KIND_META[kind];
-  const over = est ? est.credits > (me?.remaining ?? 0) : false;
-
+  const [tile, setTile] = useState(260);
+  const done = s.items;
+  const idx = s.current ? done.findIndex((g) => g.id === s.current!.id) : -1;
   return (
-    <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_300px] lg:grid-cols-[300px_minmax(0,1fr)]">
+    <div className="-mx-3 -mt-3 md:-mx-4 md:-mt-4">
       {toast}
-      {/* ---- Left: control panel ---- */}
-      <aside className="panel flex flex-col gap-3 p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-auto scrollbar-thin">
-        <StyleCard preset={preset} onChange={() => setPickPreset(true)} onClear={() => { setPreset(null); setVars({}); setNegative(""); }} />
+      <div className="flex items-center justify-between px-4 py-2">
+        <div className="seg"><button className={s.scope === "mine" ? "on" : ""} onClick={() => s.setScope("mine")}>My generations</button><button className={s.scope === "team" ? "on" : ""} onClick={() => s.setScope("team")}>Team</button></div>
+        <div className="flex items-center gap-3 text-xs muted"><span>Tile size</span><input type="range" min={140} max={420} value={tile} onChange={(e) => setTile(Number(e.target.value))} className="accent-sun" /></div>
+      </div>
+      <div className="grid-tiles min-h-[55vh]" style={{ ["--tile" as string]: `${tile}px` }}>
+        {done.map((g) => {
+          const out = (JSON.parse(g.outputs_json || "[]") as { key: string; mime: string }[])[0];
+          const pending = g.status === "queued" || g.status === "running";
+          return (
+            <div key={g.id} onClick={() => s.setSelected(g.id)} className={pending ? "shimmer" : ""}>
+              {out ? <img src={fileUrl(out.key)} alt="" loading="lazy" /> : <div className="grid h-full place-items-center p-3 text-center text-xs muted">{g.status === "failed" ? <span className="text-red-200">{g.error}</span> : "Generating…"}</div>}
+              {g.user_email && s.scope === "team" && <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">{g.user_name || g.user_email.split("@")[0]}</span>}
+              {!!g.favorite && <span className="absolute right-1.5 top-1.5 text-blush">♥</span>}
+            </div>
+          );
+        })}
+        {!s.feed.loading && !done.length && <div className="col-span-full grid min-h-[55vh] place-items-center text-center"><div><div className="display text-3xl">Describe the scene you imagine</div><p className="muted mt-2 text-sm">Your images will fill this wall.</p></div></div>}
+      </div>
 
+      <div className="bar">
+        {(s.preset || s.defs.length > 0) && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <button type="button" className="varchip !border-sun/40" onClick={() => setPickPreset(true)}><small>Preset</small><b>{s.preset?.name ?? "None"}</b></button>
+            <VarChips defs={s.defs} vars={s.vars} onChange={(k, v) => s.setVars({ ...s.vars, [k]: v })} />
+            <button type="button" className="icon-btn" title="Clear preset" onClick={s.clearPreset}><X size={13} /></button>
+          </div>
+        )}
+        {s.refs.length > 0 && (
+          <div className="mb-2 flex gap-1.5">{s.refs.map((k) => <span key={k} className="relative h-12 w-12 overflow-hidden rounded-lg border border-white/10"><img src={fileUrl(k)} className="h-full w-full object-cover" alt="" /><button type="button" className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-black/70 text-[10px]" onClick={() => s.setRefs(s.refs.filter((x) => x !== k))}>×</button></span>)}</div>
+        )}
+        <textarea className="bar-input" rows={2} placeholder={s.preset ? "Anything to add on top of the preset…" : "Describe the scene you imagine"} value={s.prompt} onChange={(e) => s.setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void s.run(); }} />
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="stepper"><button type="button" title="Add references" onClick={() => setPick(true)}><Plus size={15} /></button><button type="button" title="Pick a preset" onClick={() => setPickPreset(true)}><AtSign size={14} /></button></span>
+          <ModelChip s={s} />
+          {s.m?.options?.aspect_ratios && <ChipMenu icon={<Proportions size={13} />} label="Aspect ratio" value={String(s.params.aspect_ratio ?? s.m.options.aspect_ratios[0])} options={s.m.options.aspect_ratios} onChange={(v) => s.set("aspect_ratio", v)} />}
+          {s.m?.options?.resolutions && <ChipMenu icon={<Monitor size={13} />} label="Resolution" value={String(s.params.resolution ?? s.m.options.resolutions[0])} options={s.m.options.resolutions} onChange={(v) => s.set("resolution", v)} />}
+          <Stepper value={s.count} max={4} onChange={s.setCount} />
+          <input className="input !w-44 !py-1.5 text-xs" value={s.negative} onChange={(e) => s.setNegative(e.target.value)} placeholder="Avoid…" />
+          <span className="ml-auto flex items-center gap-2">
+            <button type="button" className="cchip" onClick={() => setSavePreset(true)} disabled={!s.renderedPrompt.trim()}>Save preset</button>
+            <button type="button" className="btn-generate !w-auto px-5" onClick={s.run} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over}>{s.busy ? <Spinner /> : <Sparkles size={15} />} Generate <span className="text-xs opacity-80">✦ {s.est ? fmtCredits(s.est.credits) : "…"}</span></button>
+          </span>
+        </div>
+        {s.over && <div className="mt-1 text-[11px] text-red-300">Over your remaining {fmtCredits(s.me?.remaining)} credits.</div>}
+      </div>
+
+      <AssetsPicker open={pick} onClose={() => setPick(false)} max={4} selected={s.refs} onPick={(k) => s.setRefs(s.refs.includes(k) ? s.refs.filter((x) => x !== k) : [...s.refs, k].slice(0, 4))} />
+      <PresetPickerModal open={pickPreset} kind="image" onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); s.applyPreset(p); }} />
+      <SavePresetModal open={savePreset} onClose={() => setSavePreset(false)} seed={{ kind: "image", model: s.model, template: s.renderedPrompt, negative: s.negative, params: s.params, reference_keys: s.refs }} onSaved={() => { setSavePreset(false); say("Preset saved"); }} />
+      {s.current && <Lightbox g={s.current} onClose={() => s.setSelected(null)} onRerun={() => void s.rerun(s.current!)} onDelete={() => void s.remove(s.current!)} onReuse={() => { s.reuse(s.current!); s.setSelected(null); }} onFavorite={() => void s.favorite(s.current!)} onPrev={idx > 0 ? () => s.setSelected(done[idx - 1].id) : undefined} onNext={idx >= 0 && idx < done.length - 1 ? () => s.setSelected(done[idx + 1].id) : undefined} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Video & Copy: left panel + History (list / grid) | How it works
+// ---------------------------------------------------------------------------
+const HOW: Record<string, { title: string; tips: string[] }> = {
+  video: { title: "Direct the shot", tips: ["Lead with the subject and the action, then the camera move (dolly, orbit, handheld), then light and lens.", "Add a start frame to lock the look; add an end frame for a controlled move between two states.", "Keep clips short: 5–8 seconds at 720p is the sweet spot for cost and iteration.", "Turn on audio for ambience; say what we hear (rain, café chatter, no music).", "Credits are estimated up front and reconciled to the real cost after the render."] },
+  text: { title: "Brief it like a writer", tips: ["Say the platform, the audience and the tone in the first line.", "Give one concrete example of a line you like.", "Ask for a count and a format (10 hooks, numbered, under 15 words).", "Use a system instruction to set a persistent voice for the whole session.", "Copy costs fractions of a credit; iterate freely."] },
+};
+
+function PanelStudio({ kind }: { kind: Kind }) {
+  const [toast, say] = useToast();
+  const s = useStudio(kind, say);
+  const [tab, setTab] = useState<"history" | "how">("history");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [pickPreset, setPickPreset] = useState(false);
+  const [savePreset, setSavePreset] = useState(false);
+  const frames: (string | null)[] = [s.refs[0] ?? null, s.refs[1] ?? null];
+  const setFrame = (i: number, k: string | null) => { const f = [...frames]; f[i] = k; s.setRefs(f.filter((x): x is string => !!x)); };
+  const how = HOW[kind];
+  return (
+    <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
+      {toast}
+      <aside className="panel flex flex-col gap-3 p-3 lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-auto scrollbar-thin">
+        <div className="flex gap-4 border-b border-white/10 px-1 text-sm font-semibold"><span className="border-b-2 border-white pb-2">Create {kind === "video" ? "Video" : "Copy"}</span>{kind === "video" && <><span className="pb-2 muted">Edit Video</span><span className="pb-2 muted">Motion Control</span></>}</div>
+        <StyleCard preset={s.preset} onChange={() => setPickPreset(true)} onClear={s.clearPreset} />
         {kind === "video" && (
           <div className="grid grid-cols-2 gap-2">
-            <FrameTile label="Start frame" value={frames[0]} onChange={(k) => setFrames((f) => [k, f[1], f[2], f[3]])} />
-            <FrameTile label="End frame" value={frames[1]} onChange={(k) => setFrames((f) => [f[0], k, f[2], f[3]])} />
+            <FrameTile label="Start frame" value={frames[0]} onChange={(k) => setFrame(0, k)} />
+            <FrameTile label="End frame" value={frames[1]} onChange={(k) => setFrame(1, k)} />
           </div>
         )}
-        {kind === "image" && m?.options?.supports_reference && (
-          <div className="grid grid-cols-4 gap-2">
-            {[0, 1, 2, 3].map((i) => <FrameTile key={i} label={i === 0 ? "Reference" : `Ref ${i + 1}`} value={frames[i]} onChange={(k) => setFrames((f) => f.map((x, j) => (j === i ? k : x)))} />)}
-          </div>
-        )}
+        {s.defs.length > 0 && <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] muted">Preset inputs</div><VarChips defs={s.defs} vars={s.vars} onChange={(k, v) => s.setVars({ ...s.vars, [k]: v })} /></div>}
+        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+          <div className="mb-1 text-[11px] muted">{s.preset ? "Extra direction (optional)" : "Prompt"}</div>
+          <textarea className="w-full resize-y bg-transparent text-sm leading-relaxed text-white outline-none placeholder:text-white/35" rows={kind === "text" ? 7 : 4} value={s.prompt} onChange={(e) => s.setPrompt(e.target.value)} placeholder={kind === "video" ? "Describe the scene you imagine, with details." : "Hooks, scripts, captions, concepts…"} />
+        </div>
+        {kind === "video" && !s.preset && <input className="input !py-2 text-xs" value={s.negative} onChange={(e) => s.setNegative(e.target.value)} placeholder="Avoid: text, watermark, blur…" />}
+        {kind === "text" && <input className="input !py-2 text-xs" value={String(s.params.system ?? "")} onChange={(e) => s.set("system", e.target.value)} placeholder="System instruction (optional)" />}
+        <ModelRow models={s.models} value={s.model} onChange={s.setModel} />
+        <div className="flex flex-wrap gap-1.5">
+          {s.m?.options?.durations && <ChipMenu icon={<Clock size={13} />} label="Duration" value={Number(s.params.duration ?? s.m.options.durations[0])} options={s.m.options.durations} onChange={(v) => s.set("duration", v)} format={(v) => `${v}s`} />}
+          {s.m?.options?.resolutions && <ChipMenu icon={<Monitor size={13} />} label="Quality" value={String(s.params.resolution ?? s.m.options.resolutions[0])} options={s.m.options.resolutions} onChange={(v) => s.set("resolution", v)} />}
+          {s.m?.options?.aspect_ratios && <ChipMenu icon={<Proportions size={13} />} label="Aspect ratio" value={String(s.params.aspect_ratio ?? s.m.options.aspect_ratios[0])} options={s.m.options.aspect_ratios} onChange={(v) => s.set("aspect_ratio", v)} />}
+          {kind === "video" && s.m?.options?.supports_audio && <ChipMenu icon={<Volume2 size={13} />} label="Audio" value={s.params.generate_audio === false ? "Off" : "On"} options={["On", "Off"]} onChange={(v) => s.set("generate_audio", v === "On")} />}
+          {kind === "text" && <ChipMenu label="Max tokens" value={Number(s.params.max_tokens ?? 1500)} options={[500, 1000, 1500, 3000, 6000]} onChange={(v) => s.set("max_tokens", v)} />}
+          {kind === "text" && <ChipMenu label="Creativity" value={Number(s.params.temperature ?? 0.8)} options={[0.2, 0.5, 0.8, 1, 1.2]} onChange={(v) => s.set("temperature", v)} format={(v) => `temp ${v}`} />}
+          <Stepper value={s.count} max={kind === "video" ? 2 : 4} onChange={s.setCount} />
+        </div>
+        <button type="button" className="btn-generate" onClick={s.run} disabled={s.busy || !s.renderedPrompt.trim() || !s.model || s.over}>{s.busy ? <Spinner /> : <Sparkles size={16} />} Generate <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-xs">✦ {s.est ? fmtCredits(s.est.credits) : "…"}</span></button>
+        <div className="flex items-center justify-between text-[11px] muted"><span>{s.over ? <span className="text-red-300">Over your remaining {fmtCredits(s.me?.remaining)} credits</span> : s.est ? `≈ $${s.est.usd.toFixed(3)} · ${s.est.breakdown[0]}` : ""}</span><button type="button" className="hover:text-white" onClick={() => setSavePreset(true)} disabled={!s.renderedPrompt.trim()}>Save preset</button></div>
+      </aside>
 
-        {defs.length > 0 && (
-          <div className="space-y-2 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-            <div className="text-[10px] font-bold uppercase tracking-[.2em] muted">Preset inputs</div>
-            {defs.map((d) => (
-              <Field key={d.key} label={`${d.label}${d.required ? " *" : ""}`} hint={d.help}>
-                {d.type === "textarea" ? <textarea className="textarea !min-h-[70px]" rows={2} value={vars[d.key] ?? ""} onChange={(e) => setVars({ ...vars, [d.key]: e.target.value })} />
-                  : d.type === "select" ? <select className="select" value={vars[d.key] ?? ""} onChange={(e) => setVars({ ...vars, [d.key]: e.target.value })}>{(d.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}</select>
-                  : <input className="input" type={d.type === "number" ? "number" : "text"} value={vars[d.key] ?? ""} onChange={(e) => setVars({ ...vars, [d.key]: e.target.value })} />}
-              </Field>
+      <section className="panel min-w-0 p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="seg"><button className={tab === "history" ? "on" : ""} onClick={() => setTab("history")}><HistoryIcon size={14} /> History</button><button className={tab === "how" ? "on" : ""} onClick={() => setTab("how")}><BookOpen size={14} /> How it works</button></div>
+          <div className="flex items-center gap-2">
+            <div className="seg"><button className={s.scope === "mine" ? "on" : ""} onClick={() => s.setScope("mine")}>Mine</button><button className={s.scope === "team" ? "on" : ""} onClick={() => s.setScope("team")}>Team</button></div>
+            <div className="seg"><button className={view === "list" ? "on" : ""} onClick={() => setView("list")}><List size={14} /> List</button><button className={view === "grid" ? "on" : ""} onClick={() => setView("grid")}><LayoutGrid size={14} /> Grid</button></div>
+          </div>
+        </div>
+        {tab === "how" ? (
+          <div className="mx-auto max-w-2xl py-10 text-center"><div className="display text-4xl">{how.title}</div><ul className="mt-6 space-y-3 text-left text-sm">{how.tips.map((t) => <li key={t} className="panel p-3">{t}</li>)}</ul></div>
+        ) : view === "grid" ? (
+          <div className="masonry">{s.items.map((g) => <div key={g.id} onClick={() => s.setSelected(g.id)}><FeedItem g={g} active={false} onSelect={() => s.setSelected(g.id)} /></div>)}</div>
+        ) : (
+          <div className="space-y-3">
+            {s.items.map((g) => (
+              <div key={g.id} className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+                <FeedItem g={g} active={s.current?.id === g.id} onSelect={() => s.setSelected(g.id)} />
+                <div className="hidden xl:block"><MetaCard g={g} onRerun={() => void s.rerun(g)} onDelete={() => void s.remove(g)} onReuse={() => s.reuse(g)} /></div>
+              </div>
             ))}
           </div>
         )}
-
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-          <div className="mb-1 text-[11px] muted">{preset ? "Extra direction (optional)" : "Prompt"}</div>
-          <textarea className="w-full resize-y bg-transparent text-sm leading-relaxed text-white outline-none placeholder:text-white/35" rows={kind === "text" ? 7 : 4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={preset ? "Anything to add on top of the preset…" : K.placeholder} />
-        </div>
-        {kind !== "text" && !preset && (
-          <input className="input !py-2 text-xs" value={negative} onChange={(e) => setNegative(e.target.value)} placeholder="Avoid: text, watermark, blur…" />
-        )}
-        {kind === "text" && <input className="input !py-2 text-xs" value={String(params.system ?? "")} onChange={(e) => set("system", e.target.value)} placeholder="System instruction (optional)" />}
-
-        <ModelRow models={models} value={model} onChange={setModel} />
-
-        <div className="flex flex-wrap gap-1.5">
-          {m?.options?.durations && <ChipMenu icon={<Clock size={13} />} label="Duration" value={Number(params.duration ?? m.options.durations[0])} options={m.options.durations} onChange={(v) => set("duration", v)} format={(v) => `${v}s`} />}
-          {m?.options?.resolutions && <ChipMenu icon={<Monitor size={13} />} label="Resolution" value={String(params.resolution ?? m.options.resolutions[0])} options={m.options.resolutions} onChange={(v) => set("resolution", v)} />}
-          {m?.options?.aspect_ratios && <ChipMenu icon={<Proportions size={13} />} label="Aspect ratio" value={String(params.aspect_ratio ?? m.options.aspect_ratios[0])} options={m.options.aspect_ratios} onChange={(v) => set("aspect_ratio", v)} />}
-          {kind === "video" && m?.options?.supports_audio && <ChipMenu icon={<Volume2 size={13} />} label="Audio" value={params.generate_audio === false ? "Off" : "On"} options={["On", "Off"]} onChange={(v) => set("generate_audio", v === "On")} />}
-          {kind === "text" && <ChipMenu label="Max tokens" value={Number(params.max_tokens ?? 1500)} options={[500, 1000, 1500, 3000, 6000]} onChange={(v) => set("max_tokens", v)} />}
-          {kind === "text" && <ChipMenu label="Creativity" value={Number(params.temperature ?? 0.8)} options={[0.2, 0.5, 0.8, 1, 1.2]} onChange={(v) => set("temperature", v)} format={(v) => `temp ${v}`} />}
-          <ChipMenu icon={<Layers size={13} />} label={kind === "video" ? "Clips" : "Variations"} value={count} options={kind === "video" ? [1, 2] : [1, 2, 3, 4]} onChange={setCount} format={(v) => `×${v}`} />
-        </div>
-
-        <button type="button" className="btn-generate" onClick={run} disabled={busy || !renderedPrompt.trim() || !model || over}>
-          {busy ? <Spinner /> : <Sparkles size={16} />} Generate <span className="rounded-md bg-black/15 px-1.5 py-0.5 text-xs">✦ {est ? fmtCredits(est.credits) : "…"}</span>
-        </button>
-        <div className="flex items-center justify-between text-[11px] muted">
-          <span>{over ? <span className="text-red-300">Over your remaining {fmtCredits(me?.remaining)} credits</span> : est ? `≈ $${est.usd.toFixed(3)} · ${est.breakdown[0]}` : ""}</span>
-          <button type="button" className="hover:text-white" onClick={() => setSavePreset(true)} disabled={!renderedPrompt.trim()} title="Save as preset"><Save size={13} /></button>
-        </div>
-      </aside>
-
-      {/* ---- Center: feed ---- */}
-      <section className="min-w-0">
-        <div className="mb-3 flex items-center justify-between">
-          <h1 className="flex items-center gap-2 text-lg font-semibold"><K.icon size={18} className="text-sun" /> {K.title}</h1>
-          <div className="flex gap-1">{(["mine", "team"] as const).map((s) => <button key={s} className={`chip ${scope === s ? "chip-on" : ""}`} onClick={() => setScope(s)}>{s === "mine" ? "My generations" : "Team"}</button>)}</div>
-        </div>
-        <div className="space-y-3">
-          {items.map((g) => <FeedItem key={g.id} g={g} active={current?.id === g.id} onSelect={() => setSelected(g.id)} />)}
-          {!feed.loading && !items.length && <div className="panel grid min-h-[360px] place-items-center p-8 text-center"><div><div className="display text-3xl">Your canvas is empty</div><p className="muted mt-2 text-sm">Write a prompt on the left, pick a model, hit Generate.</p></div></div>}
-        </div>
+        {tab === "history" && !s.feed.loading && !s.items.length && <div className="grid min-h-[320px] place-items-center text-center"><div><div className="display text-3xl">Nothing here yet</div><p className="muted mt-2 text-sm">Fill in the panel on the left and hit Generate.</p></div></div>}
       </section>
 
-      {/* ---- Right: metadata ---- */}
-      <aside className="hidden xl:block lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
-        {current ? (
-          <MetaCard g={current}
-            onRerun={async () => { try { const r = await api.post<{ generation: Generation }>(`/api/generations/${current.id}/rerun`); setSelected(r.generation.id); void feed.reload(); void refresh(); } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } }}
-            onDelete={async () => { if (!confirm("Delete this generation?")) return; await api.del(`/api/generations/${current.id}`); setSelected(null); void feed.reload(); }}
-            onReuse={() => { setPrompt(current.prompt); setPreset(null); setModel(current.model); const p = parseJson<Record<string, unknown>>(current.params_json, {}); const { negative: n, count: c, ...rest } = p; setNegative(typeof n === "string" ? n : ""); setCount(typeof c === "number" ? c : 1); setParams(rest); }} />
-        ) : <div className="panel p-4 text-sm muted">Select a generation to see its prompt, settings and actions.</div>}
-      </aside>
-
-      <PresetPickerModal open={pickPreset} kind={kind} onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); applyPreset(p); }} />
-      <SavePresetModal open={savePreset} onClose={() => setSavePreset(false)} seed={{ kind, model, template: renderedPrompt, negative, params, reference_keys: refKeys }} onSaved={() => { setSavePreset(false); say("Preset saved"); }} />
+      <PresetPickerModal open={pickPreset} kind={kind} onClose={() => setPickPreset(false)} onPick={(p) => { setPickPreset(false); s.applyPreset(p); }} />
+      <SavePresetModal open={savePreset} onClose={() => setSavePreset(false)} seed={{ kind, model: s.model, template: s.renderedPrompt, negative: s.negative, params: s.params, reference_keys: s.refs }} onSaved={() => { setSavePreset(false); say("Preset saved"); }} />
+      {s.current && view === "grid" && <Lightbox g={s.current} onClose={() => s.setSelected(null)} onRerun={() => void s.rerun(s.current!)} onDelete={() => void s.remove(s.current!)} onReuse={() => { s.reuse(s.current!); s.setSelected(null); }} onFavorite={() => void s.favorite(s.current!)} />}
+      {s.current && view === "list" && <Modal open onClose={() => s.setSelected(null)} title="Details"><div className="xl:hidden"><MetaCard g={s.current} onRerun={() => void s.rerun(s.current!)} onDelete={() => void s.remove(s.current!)} onReuse={() => { s.reuse(s.current!); s.setSelected(null); }} /></div><div className="hidden xl:block"><StatusPill status={s.current.status} /> <span className="muted text-xs">Selected. Use the card on the right.</span></div></Modal>}
     </div>
   );
 }

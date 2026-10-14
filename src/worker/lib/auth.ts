@@ -8,9 +8,9 @@ import { magicLinkEmail, sendMail } from "./mail";
 import { verifyPassword } from "./password";
 
 /** Never send password hashes or lockout state to the client. */
-export function publicUser<T extends Record<string, unknown>>(u: T): Omit<T, "password_hash" | "failed_logins" | "locked_until"> & { has_password: boolean } {
-  const { password_hash, failed_logins, locked_until, ...rest } = u as T & { password_hash?: string | null; failed_logins?: number; locked_until?: string | null };
-  void failed_logins; void locked_until;
+export function publicUser<T extends Record<string, unknown>>(u: T): Omit<T, "password_hash" | "failed_logins" | "locked_until" | "google_sub"> & { has_password: boolean } {
+  const { password_hash, failed_logins, locked_until, google_sub, ...rest } = u as T & { password_hash?: string | null; failed_logins?: number; locked_until?: string | null; google_sub?: string | null };
+  void failed_logins; void locked_until; void google_sub;
   return { ...rest, has_password: !!password_hash };
 }
 

@@ -185,3 +185,124 @@ export function MetaCard({ g, onRerun, onDelete, onReuse }: { g: Gen; onRerun: (
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Assets picker (the "+" in the prompt bar): Uploads | Generations tabs
+// ---------------------------------------------------------------------------
+import { Heart, Upload } from "lucide-react";
+import type { PresetVariable } from "../../shared/types";
+
+export function AssetsPicker({ open, onClose, onPick, max, selected }: { open: boolean; onClose: () => void; onPick: (key: string) => void; max: number; selected: string[] }) {
+  const [tab, setTab] = useState<"uploads" | "generations">("uploads");
+  const [uploads, setUploads] = useState<string[]>([]);
+  const [gens, setGens] = useState<Gen[]>([]);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    try { setUploads(JSON.parse(localStorage.getItem("ccs_uploads") ?? "[]")); } catch { setUploads([]); }
+    api.get<{ generations: Gen[] }>("/api/generations?kind=image&status=done&limit=60").then((r) => setGens(r.generations)).catch(() => {});
+  }, [open]);
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      const next = [...uploads];
+      for (const f of Array.from(files)) { const fd = new FormData(); fd.append("file", f); fd.append("kind", "image"); const r = await api.form<{ key: string }>("/api/upload", fd); next.unshift(r.key); onPick(r.key); }
+      setUploads(next); try { localStorage.setItem("ccs_uploads", JSON.stringify(next.slice(0, 60))); } catch { /* ignore */ }
+    } catch (e) { alert(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); if (ref.current) ref.current.value = ""; }
+  };
+  const full = selected.length >= max;
+  return (
+    <Modal open={open} onClose={onClose} title="References" wide>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="seg"><button className={tab === "uploads" ? "on" : ""} onClick={() => setTab("uploads")}>Uploads</button><button className={tab === "generations" ? "on" : ""} onClick={() => setTab("generations")}>Generations</button></div>
+        <span className="text-xs muted">{selected.length}/{max} selected</span>
+      </div>
+      <div className="grid max-h-[60vh] grid-cols-3 gap-2 overflow-auto scrollbar-thin sm:grid-cols-5 lg:grid-cols-7">
+        {tab === "uploads" && (
+          <button type="button" className="tile" onClick={() => ref.current?.click()} disabled={busy || full}>{busy ? <Spinner /> : <Upload size={18} />}<span>Upload media</span></button>
+        )}
+        {(tab === "uploads" ? uploads.map((k) => ({ key: k })) : gens.flatMap((g) => parseJson<{ key: string; mime: string }[]>(g.outputs_json, []).filter((o) => o.mime.startsWith("image/")))).map((o) => {
+          const on = selected.includes(o.key);
+          return (
+            <button key={o.key} type="button" className={`relative aspect-square overflow-hidden rounded-xl border ${on ? "border-sun" : "border-white/10"}`} onClick={() => { if (!on && full) return; onPick(o.key); }}>
+              <img src={fileUrl(o.key)} className="h-full w-full object-cover" alt="" loading="lazy" />
+              {on && <span className="absolute left-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-sun text-[11px] font-bold text-ink">✓</span>}
+            </button>
+          );
+        })}
+        {tab === "generations" && !gens.length && <div className="col-span-full p-4 text-sm muted">Finished image generations show up here so you can reuse them as references.</div>}
+      </div>
+      <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void upload(e.target.files)} />
+      <div className="mt-3 flex justify-end"><button className="btn btn-sun" onClick={onClose}>Done</button></div>
+    </Modal>
+  );
+}
+
+/** − 1/4 + stepper */
+export function Stepper({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <span className="stepper" title="Variations">
+      <button type="button" onClick={() => onChange(Math.max(1, value - 1))}>−</button>
+      <span>{value}/{max}</span>
+      <button type="button" onClick={() => onChange(Math.min(max, value + 1))}>+</button>
+    </span>
+  );
+}
+
+/** Preset inputs rendered as labeled chips (like Cinema Studio's Film setup / Camera / Lighting row). */
+export function VarChips({ defs, vars, onChange }: { defs: PresetVariable[]; vars: Record<string, string>; onChange: (k: string, v: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setEditing(null); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, [editing]);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {defs.map((d) => (
+        <div key={d.key} className="relative">
+          <button type="button" className={`varchip ${d.required && !vars[d.key] ? "border-red-400/40" : ""}`} onClick={() => setEditing(editing === d.key ? null : d.key)}>
+            <small>{d.label}{d.required ? " *" : ""}</small><b>{vars[d.key] || <span className="muted font-normal">{d.type === "select" ? "Choose" : "Type…"}</span>}</b>
+          </button>
+          {editing === d.key && (
+            <div ref={ref} className="menu bottom-[calc(100%+6px)] left-0 w-72 p-3">
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-[.2em] muted">{d.label}</div>
+              {d.type === "select" ? (d.options ?? []).map((o) => <button key={o} type="button" className={`menu-item ${vars[d.key] === o ? "on" : ""}`} onClick={() => { onChange(d.key, o); setEditing(null); }}>{o}</button>)
+                : d.type === "textarea" ? <textarea className="textarea !min-h-[90px]" autoFocus value={vars[d.key] ?? ""} onChange={(e) => onChange(d.key, e.target.value)} />
+                : <input className="input" autoFocus type={d.type === "number" ? "number" : "text"} value={vars[d.key] ?? ""} onChange={(e) => onChange(d.key, e.target.value)} onKeyDown={(e) => e.key === "Enter" && setEditing(null)} />}
+              {d.help && <div className="mt-2 text-[11px] muted">{d.help}</div>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Full-screen viewer with the metadata card. */
+export function Lightbox({ g, onClose, onRerun, onDelete, onReuse, onFavorite, onPrev, onNext }: { g: Gen; onClose: () => void; onRerun: () => void; onDelete: () => void; onReuse: () => void; onFavorite?: () => void; onPrev?: () => void; onNext?: () => void }) {
+  const outputs = parseJson<{ key: string; mime: string }[]>(g.outputs_json, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowLeft") onPrev?.(); if (e.key === "ArrowRight") onNext?.(); };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, [onClose, onPrev, onNext]);
+  return (
+    <div className="lightbox" onClick={onClose}>
+      <div className="relative grid place-items-center overflow-auto p-4" onClick={(e) => e.stopPropagation()}>
+        <button className="icon-btn absolute left-4 top-4 z-10" onClick={onClose}><X size={16} /></button>
+        {onPrev && <button className="icon-btn absolute left-4 top-1/2 z-10 -translate-y-1/2" onClick={onPrev}>‹</button>}
+        {onNext && <button className="icon-btn absolute right-4 top-1/2 z-10 -translate-y-1/2" onClick={onNext}>›</button>}
+        {g.kind === "text" ? <div className="panel prose-out max-h-[85vh] w-full max-w-3xl overflow-auto p-6 scrollbar-thin">{g.text_output ?? g.error}</div>
+          : outputs.length ? <div className={`grid gap-2 ${outputs.length > 1 ? "grid-cols-2" : ""}`}>{outputs.map((o) => o.mime.startsWith("video/") ? <video key={o.key} src={fileUrl(o.key)} controls autoPlay playsInline className="max-h-[85vh] rounded-xl" /> : <img key={o.key} src={fileUrl(o.key)} className="max-h-[85vh] rounded-xl object-contain" alt="" />)}</div>
+          : <div className="text-sm text-red-200">{g.error ?? "Still generating…"}</div>}
+      </div>
+      <div className="overflow-auto p-4 scrollbar-thin" onClick={(e) => e.stopPropagation()}>
+        <MetaCard g={g} onRerun={onRerun} onDelete={onDelete} onReuse={onReuse} />
+        {onFavorite && <button className={`cchip mt-3 ${g.favorite ? "!text-blush" : ""}`} onClick={onFavorite}><Heart size={13} fill={g.favorite ? "currentColor" : "none"} /> {g.favorite ? "Favourited" : "Add to favourites"}</button>}
+      </div>
+    </div>
+  );
+}

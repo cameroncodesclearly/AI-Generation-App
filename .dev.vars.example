@@ -6,3 +6,6 @@ NAS_ANALYZER_URL=
 NAS_ANALYZER_TOKEN=
 # Optional: when set, local dev skips email and prints the magic link to the wrangler console
 DEV_PRINT_MAGIC_LINK=1
+# Google sign-in (OAuth client of type "Web application"; authorized redirect URI = {APP_URL}/api/auth/google/callback)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

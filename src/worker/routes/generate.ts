@@ -47,9 +47,12 @@ gen.get("/generations", async (c) => {
   if (preset) { where.push(`preset_id = ?${binds.length + 1}`); binds.push(preset); }
   const status = c.req.query("status");
   if (status) { where.push(`status = ?${binds.length + 1}`); binds.push(status); }
+  if (c.req.query("favorite") === "1") where.push("favorite = 1");
+  const q = (c.req.query("q") ?? "").trim();
+  if (q) { where.push(`prompt LIKE ?${binds.length + 1}`); binds.push(`%${q.replace(/[%_]/g, "")}%`); }
   const ids = c.req.query("ids");
   if (ids) { const list = ids.split(",").slice(0, 50); where.push(`id IN (${list.map((_, i) => `?${binds.length + i + 1}`).join(",")})`); binds.push(...list); }
-  const sql = `SELECT g.*, u.email AS user_email, u.name AS user_name FROM generations g JOIN users u ON u.id = g.user_id ${where.length ? "WHERE " + where.map((w) => w.replace(/\b(user_id|kind|id|preset_id|status)\b/, "g.$1")).join(" AND ") : ""} ORDER BY g.created_at DESC LIMIT ${limit}`;
+  const sql = `SELECT g.*, u.email AS user_email, u.name AS user_name FROM generations g JOIN users u ON u.id = g.user_id ${where.length ? "WHERE " + where.map((w) => w.replace(/\b(user_id|kind|id|preset_id|status|favorite|prompt)\b/, "g.$1")).join(" AND ") : ""} ORDER BY g.created_at DESC LIMIT ${limit}`;
   const rows = await c.env.DB.prepare(sql).bind(...binds).all();
   return c.json({ generations: rows.results });
 });
@@ -58,6 +61,14 @@ gen.get("/generations/:id", async (c) => {
   const g = await c.env.DB.prepare("SELECT * FROM generations WHERE id = ?1").bind(c.req.param("id")).first<Generation>();
   if (!g) throw new HttpError(404, "Not found");
   return c.json({ generation: g });
+});
+
+gen.post("/generations/:id/favorite", async (c) => {
+  const u = c.get("user");
+  const g = await c.env.DB.prepare("SELECT id, user_id, favorite FROM generations WHERE id = ?1").bind(c.req.param("id")).first<{ id: string; user_id: string; favorite: number }>();
+  if (!g || (g.user_id !== u.id && u.role !== "admin")) throw new HttpError(404, "Not found");
+  await c.env.DB.prepare("UPDATE generations SET favorite = ?2 WHERE id = ?1").bind(g.id, g.favorite ? 0 : 1).run();
+  return c.json({ favorite: !g.favorite });
 });
 
 gen.post("/generations/:id/rerun", async (c) => {

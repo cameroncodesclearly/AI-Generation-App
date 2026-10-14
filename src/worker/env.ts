@@ -16,6 +16,9 @@ export interface Env {
   NAS_ANALYZER_URL?: string;
   NAS_ANALYZER_TOKEN?: string;
   DEV_PRINT_MAGIC_LINK?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_ALLOWED_DOMAINS?: string;
 }
 
 export type JobMessage =

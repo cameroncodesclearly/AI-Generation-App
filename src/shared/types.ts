@@ -15,6 +15,7 @@ export interface User {
   last_seen_at: string | null;
   has_password?: boolean;
   must_set_password?: number;
+  avatar_url?: string | null;
 }
 
 export interface ModelInfo {
@@ -83,6 +84,7 @@ export interface Generation {
   outputs_json: string;
   text_output: string | null;
   error: string | null;
+  favorite?: number;
   created_at: string;
   completed_at: string | null;
 }
