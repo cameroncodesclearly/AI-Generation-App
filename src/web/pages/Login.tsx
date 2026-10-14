@@ -27,8 +27,9 @@ export default function Login() {
         await refresh();
         nav(r.must_set_password ? "/account?setpw=1" : "/", { replace: true });
       } else {
-        const r = await api.post<{ message: string; devLink?: string }>("/api/auth/request", { email });
+        const r = await api.post<{ message: string; devLink?: string; demo?: boolean }>("/api/auth/request", { email });
         setMsg(r.message); setDevLink(r.devLink ?? null);
+        if (r.demo) { await refresh(); nav("/", { replace: true }); }
       }
     } catch (e2) { setErr(e2 instanceof Error ? e2.message : String(e2)); } finally { setBusy(false); }
   };
@@ -44,7 +45,7 @@ export default function Login() {
         </div>
         <form onSubmit={submit} className="glass glass-strong p-6">
           {providers.google && (<>
-            <a href="/api/auth/google" className="btn w-full !bg-white !py-3 !text-ink">
+            <a href="/api/auth/google" className="btn w-full !bg-white !py-3 !text-ink" onClick={async (e) => { if (!providers.google) return; const r = await api.post<{ demo?: boolean }>("/api/auth/google").catch(() => null); if (r?.demo) { e.preventDefault(); await refresh(); nav("/", { replace: true }); } }}>
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.2 5.5-4.7 7.2l7.4 5.7c4.3-4 7.1-9.9 7.1-17.4z"/><path fill="#FBBC05" d="M10.4 28.7A14.6 14.6 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.9 2.3-8.5 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>
               Continue with Google
             </a>

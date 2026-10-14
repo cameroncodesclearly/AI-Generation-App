@@ -21,8 +21,11 @@ export const api = {
   form: <T>(url: string, form: FormData) => fetch(url, { method: "POST", credentials: "include", body: form }).then((r) => handle<T>(r)),
 };
 
+import { DEMO, demoFiles } from "./demo";
+
 export function fileUrl(key: string | null | undefined, download = false): string {
   if (!key) return "";
+  if (DEMO) return demoFiles.get(key) ?? "";
   return `/files/${key.split("/").map(encodeURIComponent).join("/")}${download ? "?download=1" : ""}`;
 }
 

@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { DEMO } from "./lib/demo";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Shell from "./components/Shell";
 import Login from "./pages/Login";
@@ -20,9 +21,11 @@ function Guard() {
 }
 
 export default function App() {
+  const Router = DEMO ? HashRouter : BrowserRouter;
   return (
     <AuthProvider>
-      <BrowserRouter>
+      {DEMO && <div style={{ position: "fixed", bottom: 8, left: 8, zIndex: 70, fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(217,180,53,.95)", color: "#1a1307", fontWeight: 700 }}>DEMO · mocked data, no real models</div>}
+      <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Guard />}>
@@ -38,7 +41,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </Router>
     </AuthProvider>
   );
 }
