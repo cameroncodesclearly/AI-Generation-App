@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { Generation } from "../../shared/types";
 import { api } from "../lib/api";
 import { usePoll } from "../lib/hooks";
@@ -7,7 +8,9 @@ import { Empty } from "../components/ui";
 
 export default function Library() {
   const [kind, setKind] = useState<"" | "image" | "video" | "text">("");
-  const [scope, setScope] = useState<"mine" | "team">("mine");
+  const [sp] = useSearchParams();
+  const [scope, setScope] = useState<"mine" | "team">(sp.get("scope") === "team" ? "team" : "mine");
+  useEffect(() => { setScope(sp.get("scope") === "team" ? "team" : "mine"); }, [sp]);
   const feed = usePoll(() => api.get<{ generations: Generation[] }>(`/api/generations?scope=${scope}&limit=100${kind ? `&kind=${kind}` : ""}`), 6000, true, [kind, scope]);
   const items = feed.data?.generations ?? [];
   return (

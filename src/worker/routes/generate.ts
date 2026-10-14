@@ -43,9 +43,13 @@ gen.get("/generations", async (c) => {
   const where: string[] = []; const binds: unknown[] = [];
   if (scope !== "team") { where.push(`user_id = ?${binds.length + 1}`); binds.push(u.id); }
   if (kind) { where.push(`kind = ?${binds.length + 1}`); binds.push(kind); }
+  const preset = c.req.query("preset_id");
+  if (preset) { where.push(`preset_id = ?${binds.length + 1}`); binds.push(preset); }
+  const status = c.req.query("status");
+  if (status) { where.push(`status = ?${binds.length + 1}`); binds.push(status); }
   const ids = c.req.query("ids");
   if (ids) { const list = ids.split(",").slice(0, 50); where.push(`id IN (${list.map((_, i) => `?${binds.length + i + 1}`).join(",")})`); binds.push(...list); }
-  const sql = `SELECT g.*, u.email AS user_email, u.name AS user_name FROM generations g JOIN users u ON u.id = g.user_id ${where.length ? "WHERE " + where.map((w) => w.replace(/\b(user_id|kind|id)\b/, "g.$1")).join(" AND ") : ""} ORDER BY g.created_at DESC LIMIT ${limit}`;
+  const sql = `SELECT g.*, u.email AS user_email, u.name AS user_name FROM generations g JOIN users u ON u.id = g.user_id ${where.length ? "WHERE " + where.map((w) => w.replace(/\b(user_id|kind|id|preset_id|status)\b/, "g.$1")).join(" AND ") : ""} ORDER BY g.created_at DESC LIMIT ${limit}`;
   const rows = await c.env.DB.prepare(sql).bind(...binds).all();
   return c.json({ generations: rows.results });
 });
@@ -54,6 +58,17 @@ gen.get("/generations/:id", async (c) => {
   const g = await c.env.DB.prepare("SELECT * FROM generations WHERE id = ?1").bind(c.req.param("id")).first<Generation>();
   if (!g) throw new HttpError(404, "Not found");
   return c.json({ generation: g });
+});
+
+gen.post("/generations/:id/rerun", async (c) => {
+  const u = c.get("user");
+  const g = await c.env.DB.prepare("SELECT * FROM generations WHERE id = ?1").bind(c.req.param("id")).first<Generation>();
+  if (!g) throw new HttpError(404, "Not found");
+  const params = JSON.parse(g.params_json || "{}") as Record<string, unknown>;
+  const { count, negative, ...rest } = params;
+  const refs = (JSON.parse(g.input_keys_json || "[]") as string[]).filter((k) => k.startsWith(`uploads/${u.id}/`) || u.role === "admin" || g.user_id === u.id);
+  const copy = await createGeneration(c.env, u, { kind: g.kind, model: g.model, prompt: g.prompt, negative: typeof negative === "string" ? negative : undefined, params: rest, reference_keys: refs, preset_id: g.preset_id ?? undefined, count: typeof count === "number" ? count : 1 });
+  return c.json({ generation: copy }, 201);
 });
 
 gen.delete("/generations/:id", async (c) => {
