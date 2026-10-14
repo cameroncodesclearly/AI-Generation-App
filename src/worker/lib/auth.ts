@@ -5,6 +5,36 @@ import type { User } from "../../shared/types";
 import { addDays, HttpError, id, sha256, token } from "./util";
 import { ensurePeriod } from "./credits";
 import { magicLinkEmail, sendMail } from "./mail";
+import { verifyPassword } from "./password";
+
+/** Never send password hashes or lockout state to the client. */
+export function publicUser<T extends Record<string, unknown>>(u: T): Omit<T, "password_hash" | "failed_logins" | "locked_until"> & { has_password: boolean } {
+  const { password_hash, failed_logins, locked_until, ...rest } = u as T & { password_hash?: string | null; failed_logins?: number; locked_until?: string | null };
+  void failed_logins; void locked_until;
+  return { ...rest, has_password: !!password_hash };
+}
+
+const MAX_FAILED = 8;
+const LOCK_MINUTES = 15;
+
+export async function loginWithPassword(env: Env, email: string, password: string): Promise<User> {
+  const generic = new HttpError(401, "Wrong email or password");
+  const u = await env.DB.prepare("SELECT * FROM users WHERE email = ?1").bind(email.toLowerCase())
+    .first<User & { password_hash: string | null; failed_logins: number; locked_until: string | null }>();
+  if (!u || u.status !== "active") { await verifyPassword(password, "pbkdf2$1000$AAAAAAAAAAAAAAAAAAAAAA$AAAA"); throw generic; }
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+  if (u.locked_until && u.locked_until > now) throw new HttpError(429, `Too many attempts. Try again in a few minutes or use an email link.`);
+  if (!u.password_hash) throw new HttpError(401, "No password set yet. Use the email link to sign in, then set one under Account.");
+  const ok = await verifyPassword(password, u.password_hash);
+  if (!ok) {
+    const failed = (u.failed_logins ?? 0) + 1;
+    const lock = failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString().replace("T", " ").slice(0, 19) : null;
+    await env.DB.prepare("UPDATE users SET failed_logins = ?2, locked_until = ?3 WHERE id = ?1").bind(u.id, lock ? 0 : failed, lock).run();
+    throw generic;
+  }
+  if (u.failed_logins || u.locked_until) await env.DB.prepare("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?1").bind(u.id).run();
+  return ensurePeriod(env, u);
+}
 
 export const COOKIE = "ccs_session";
 const MAGIC_MINUTES = 15;

@@ -29,8 +29,10 @@ scripts      Brand-asset generator (OpenRouter)
   download a CSV of all results.
 - **Admin.** Team roster with usage meters and real spend, model allow-list with price overrides, usage by person and
   model, full credit ledger.
-- **Auth.** Passwordless magic links (15 min, single use), 30-day sessions, admin bootstrap from `ADMIN_EMAILS`,
-  invite-only for everyone else.
+- **Auth.** Email + password accounts (PBKDF2, lockout after repeated failures) plus magic links (15 min, single use)
+  for invites and password resets. Admins create accounts with either a temporary password they hand over directly
+  or an emailed link; people set their own password under Account. 30-day sessions, admin bootstrap from
+  `ADMIN_EMAILS`, invite-only for everyone else.
 
 ## Setup
 

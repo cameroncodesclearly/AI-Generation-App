@@ -13,6 +13,8 @@ export interface User {
   period_reset: "monthly" | "never";
   created_at: string;
   last_seen_at: string | null;
+  has_password?: boolean;
+  must_set_password?: number;
 }
 
 export interface ModelInfo {

@@ -1,5 +1,6 @@
 import { newApp, requireAdmin, requireUser } from "../app";
-import { createUser, getUserByEmail, issueMagicLink } from "../lib/auth";
+import { createUser, getUserByEmail, issueMagicLink, publicUser } from "../lib/auth";
+import { hashPassword, validatePassword } from "../lib/password";
 import { getCatalog } from "../lib/catalog";
 import { inviteEmail, sendMail } from "../lib/mail";
 import { HttpError, id } from "../lib/util";
@@ -15,17 +16,19 @@ admin.get("/users", async (c) => {
        (SELECT COUNT(*) FROM analyses a WHERE a.user_id = u.id) AS analyses,
        (SELECT COALESCE(SUM(cost_usd),0) FROM generations g WHERE g.user_id = u.id AND g.created_at >= u.period_start) + (SELECT COALESCE(SUM(cost_usd),0) FROM analyses a WHERE a.user_id = u.id AND a.created_at >= u.period_start) AS period_usd
      FROM users u ORDER BY u.created_at ASC`,
-  ).all();
-  return c.json({ users: rows.results });
+  ).all<Record<string, unknown>>();
+  return c.json({ users: rows.results.map(publicUser) });
 });
 
 admin.post("/users", async (c) => {
   const me = c.get("user");
-  const b = (await c.req.json()) as { email?: string; name?: string; credit_limit?: number; role?: "admin" | "member"; send_invite?: boolean };
+  const b = (await c.req.json()) as { email?: string; name?: string; credit_limit?: number; role?: "admin" | "member"; send_invite?: boolean; password?: string };
+  if (b.password) validatePassword(b.password);
   const email = (b.email ?? "").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "Enter a valid email");
   if (await getUserByEmail(c.env, email)) throw new HttpError(409, "That person is already on the team");
   const user = await createUser(c.env, email, { name: b.name?.trim() || undefined, credit_limit: Math.max(0, Math.floor(Number(b.credit_limit ?? parseInt(c.env.DEFAULT_CREDIT_LIMIT, 10)))), role: b.role === "admin" ? "admin" : "member" });
+  if (b.password) await c.env.DB.prepare("UPDATE users SET password_hash = ?2, must_set_password = 1 WHERE id = ?1").bind(user.id, await hashPassword(b.password)).run();
   let invited = false; let devLink: string | undefined;
   if (b.send_invite !== false) {
     try {
@@ -38,7 +41,8 @@ admin.post("/users", async (c) => {
       }
     } catch (e) { devLink = undefined; console.warn("invite mail failed", e); }
   }
-  return c.json({ user, invited, devLink }, 201);
+  const fresh = (await c.env.DB.prepare("SELECT * FROM users WHERE id = ?1").bind(user.id).first<Record<string, unknown>>())!;
+  return c.json({ user: publicUser(fresh), invited, devLink }, 201);
 });
 
 admin.patch("/users/:id", async (c) => {
@@ -55,7 +59,7 @@ admin.patch("/users/:id", async (c) => {
     b.period_reset === "never" || b.period_reset === "monthly" ? b.period_reset : target.period_reset,
   ).run();
   if (b.status === "disabled") await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(target.id).run();
-  return c.json({ user: await c.env.DB.prepare("SELECT * FROM users WHERE id = ?1").bind(target.id).first<User>() });
+  return c.json({ user: publicUser((await c.env.DB.prepare("SELECT * FROM users WHERE id = ?1").bind(target.id).first<Record<string, unknown>>())!) });
 });
 
 admin.post("/users/:id/reset", async (c) => {
@@ -78,6 +82,17 @@ admin.post("/users/:id/adjust", async (c) => {
     c.env.DB.prepare("UPDATE users SET credits_used = MAX(0, credits_used + ?2) WHERE id = ?1").bind(target.id, d),
     c.env.DB.prepare("INSERT INTO credit_ledger (id, user_id, delta, reason, ref_type, ref_id) VALUES (?1, ?2, ?3, 'adjust', 'admin', ?4)").bind(id("led"), target.id, d, c.get("user").id),
   ]);
+  return c.json({ ok: true });
+});
+
+/** Set a temporary password; the person is asked to replace it on first sign-in. */
+admin.post("/users/:id/password", async (c) => {
+  const target = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?1").bind(c.req.param("id")).first<{ id: string }>();
+  if (!target) throw new HttpError(404, "User not found");
+  const { password } = (await c.req.json()) as { password?: string };
+  validatePassword(password ?? "");
+  await c.env.DB.prepare("UPDATE users SET password_hash = ?2, must_set_password = 1, failed_logins = 0, locked_until = NULL WHERE id = ?1").bind(target.id, await hashPassword(password!)).run();
+  await c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(target.id).run();
   return c.json({ ok: true });
 });
 

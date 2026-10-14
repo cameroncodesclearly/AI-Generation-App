@@ -28,17 +28,17 @@ function Team() {
   const [toast, say] = useToast();
   const users = usePoll(() => api.get<{ users: U[] }>("/api/admin/users"), 15000, true);
   const [invite, setInvite] = useState(false);
-  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [limit, setLimit] = useState(2000); const [role, setRole] = useState<"member" | "admin">("member");
+  const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [limit, setLimit] = useState(2000); const [role, setRole] = useState<"member" | "admin">("member"); const [tempPw, setTempPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<U | null>(null);
   const patch = async (u: U, body: Partial<User>) => { try { await api.patch(`/api/admin/users/${u.id}`, body); void users.reload(); say("Updated"); } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } };
   const add = async () => {
     setBusy(true);
     try {
-      const r = await api.post<{ invited: boolean; devLink?: string }>("/api/admin/users", { email, name, credit_limit: limit, role });
-      say(r.invited ? `Invite sent to ${email}` : r.devLink ? "Added (dev: link in console)" : "Added; invite email not sent (check RESEND_API_KEY)");
+      const r = await api.post<{ invited: boolean; devLink?: string }>("/api/admin/users", { email, name, credit_limit: limit, role, password: tempPw || undefined, send_invite: !tempPw });
+      say(tempPw ? `Added. Share the temporary password with ${email} directly.` : r.invited ? `Invite sent to ${email}` : r.devLink ? "Added (dev: link in console)" : "Added; invite email not sent (check RESEND_API_KEY)");
       if (r.devLink) console.log("[invite link]", r.devLink);
-      setInvite(false); setEmail(""); setName(""); void users.reload();
+      setInvite(false); setEmail(""); setName(""); setTempPw(""); void users.reload();
     } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); } finally { setBusy(false); }
   };
   return (
@@ -73,7 +73,8 @@ function Team() {
             <Field label="Monthly credit limit" hint={`≈ $${(limit * (me?.config.credit_usd ?? 0.01)).toFixed(0)} of model spend`}><input className="input" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></Field>
             <Field label="Role"><select className="select" value={role} onChange={(e) => setRole(e.target.value as "member" | "admin")}><option value="member">Member</option><option value="admin">Admin</option></select></Field>
           </div>
-          <div className="flex justify-end"><button className="btn btn-sun" onClick={add} disabled={busy || !email}>{busy ? <Spinner /> : "Add & send magic link"}</button></div>
+          <Field label="Temporary password (optional)" hint="If set, no email is sent: tell them the password yourself. They must replace it on first sign-in. Leave blank to email a sign-in link instead."><input className="input" type="text" autoComplete="off" value={tempPw} onChange={(e) => setTempPw(e.target.value)} placeholder="e.g. Studio-2026-welcome" /></Field>
+          <div className="flex justify-end"><button className="btn btn-sun" onClick={add} disabled={busy || !email || (tempPw.length > 0 && tempPw.length < 10)}>{busy ? <Spinner /> : tempPw ? "Add with password" : "Add & send magic link"}</button></div>
         </div>
       </Modal>
       {edit && <EditUser u={edit} onClose={() => setEdit(null)} onChanged={() => { void users.reload(); setEdit(null); }} />}
@@ -86,10 +87,12 @@ function EditUser({ u, onClose, onChanged }: { u: U; onClose: () => void; onChan
   const [toast, say] = useToast();
   const [name, setName] = useState(u.name ?? ""); const [limit, setLimit] = useState(u.credit_limit); const [reset, setReset] = useState(u.period_reset); const [status, setStatus] = useState(u.status);
   const [grant, setGrant] = useState(0);
+  const [newPw, setNewPw] = useState("");
   const save = async () => {
     try {
       await api.patch(`/api/admin/users/${u.id}`, { name, credit_limit: limit, period_reset: reset, status });
       if (grant) await api.post(`/api/admin/users/${u.id}/adjust`, { delta: -grant });
+      if (newPw) await api.post(`/api/admin/users/${u.id}/password`, { password: newPw });
       onChanged();
     } catch (e) { say(e instanceof Error ? e.message : String(e), "error"); }
   };
@@ -104,6 +107,7 @@ function EditUser({ u, onClose, onChanged }: { u: U; onClose: () => void; onChan
           <Field label="Status"><select className="select" value={status} disabled={u.id === me?.user.id} onChange={(e) => setStatus(e.target.value as User["status"])}><option value="active">Active</option><option value="disabled">Disabled</option></select></Field>
           <Field label="One-time top-up (credits)" hint="Adds credits for this period only"><input className="input" type="number" value={grant} onChange={(e) => setGrant(Number(e.target.value))} /></Field>
         </div>
+        <Field label="Reset to a temporary password (optional)" hint={`${u.has_password ? "Has a password." : "No password yet."} Setting one signs them out everywhere and asks them to choose a new one.`}><input className="input" type="text" autoComplete="off" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="Leave blank to keep" /></Field>
         <div className="muted text-xs">Used {fmtCredits(u.credits_used)} this period (since {u.period_start}).</div>
         <div className="flex justify-between">
           <button className="btn btn-sm" onClick={async () => { if (confirm("Reset this person's used credits to zero?")) { await api.post(`/api/admin/users/${u.id}/reset`); onChanged(); } }}><RotateCcw size={14} /> Reset usage</button>

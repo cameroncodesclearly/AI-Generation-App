@@ -65,6 +65,7 @@ export default function Shell() {
           {[{ to: "/", label: "Home" }, ...create, ...library].map((n) => <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `chip ${isActive ? "chip-on" : ""}`}>{n.label}</NavLink>)}
           {me.user.role === "admin" && <NavLink to="/admin" className={({ isActive }) => `chip ${isActive ? "chip-on" : ""}`}>Admin</NavLink>}
         </div>
+        {!!me.user.must_set_password && <NavLink to="/account?setpw=1" className="panel mb-3 block border-sun/40 px-4 py-2 text-sm">You're using a temporary password. <b className="text-sun">Set your own →</b></NavLink>}
         <Outlet />
       </main>
     </div>
